@@ -1,0 +1,13 @@
+[run]
+branch = True
+source = .
+omit =
+    tests/*
+    venv/*
+    tmp/*
+
+[report]
+show_missing = True
+skip_covered = False
+fail_under = 100
+precision = 2

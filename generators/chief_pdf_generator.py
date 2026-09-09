@@ -10,11 +10,12 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from services.report_io import MONTHS
 from services.rounding import round_half_up
+from generators.debt_adjustments import debt_adjustment_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FONT_PATH = PROJECT_ROOT / "fonts" / "DejaVuSans.ttf"
-if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():  # pragma: no branch - import-time environment
     pdfmetrics.registerFont(TTFont("DejaVuSans", str(FONT_PATH)))
 
 
@@ -165,6 +166,7 @@ def generate_chief_pdf(pdf_path, report, year, month):
               ["Общая ПДЗ", money(debt["total"])],
               ["Ответственность за ПДЗ (1% от суммы)", "-" + money(debt["responsibility"])]],
               [95 * mm, 55 * mm], "#FCE4D6"), Spacer(1, 4)]
+    story.extend(debt_adjustment_table(debt))
     debt_threshold = f"{float(debt['threshold']):,.0f}".replace(",", " ")
     story += [Paragraph(
         f"В таблице ниже отдельно отмечены клиенты с просроченной "
@@ -186,14 +188,21 @@ def generate_chief_pdf(pdf_path, report, year, month):
     story += [_table(debt_rows, [65 * mm, 35 * mm, 80 * mm], "#F4B183"), Spacer(1, 6)]
     lukoil = report["lukoil"]
     lukoil_rows = [["Менеджер", "Бонус менеджера"]]
-    lukoil_rows += [[item["employee"], money(item["manager_bonus"])] for item in lukoil["manager_items"]]
-    lukoil_rows += [
-        ["Сумма бонусов менеджеров", money(lukoil["manager_bonus_total"])],
-        [f'Коэффициент руководителя ({lukoil["coefficient"] * 100:.0f}%)', money(lukoil["bonus"])],
-    ]
+    if lukoil.get("calculation_enabled", True):
+        lukoil_rows += [[item["employee"], money(item["manager_bonus"])] for item in lukoil["manager_items"]]
+        lukoil_rows += [
+            ["Сумма бонусов менеджеров", money(lukoil["manager_bonus_total"])],
+            [f'Коэффициент руководителя ({lukoil["coefficient"] * 100:.0f}%)', money(lukoil["bonus"])],
+        ]
+        lukoil_description = (
+            "Учитываются бонусы менеджеров по оплаченному товару Лукойл. Бонус "
+            "руководителя равен сумме бонусов таких менеджеров, умноженной на 0,25."
+        )
+    else:
+        lukoil_rows.append(["", ""])
+        lukoil_description = "Расчёт будет добавлен после подключения отдельного отчёта."
     story += [Paragraph("6. Лукойл", styles["Heading2"]), Paragraph(
-              "Учитываются бонусы менеджеров по оплаченному товару Лукойл. Бонус "
-              "руководителя равен сумме бонусов таких менеджеров, умноженной на 0,25.",
+              lukoil_description,
               styles["BodyText"]), Spacer(1, 4), _table(lukoil_rows, [105 * mm, 45 * mm], "#BDD7EE")]
     key_clients = report["key_clients_profit"]
     key_client_rows = [["Клиент", "Размер прибыли", "Размер бонуса"]]

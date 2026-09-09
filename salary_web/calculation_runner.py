@@ -6,8 +6,7 @@ from sqlalchemy.orm import Session
 from directions.b2b.chief_salary import calculate_chief
 from directions.b2b.manager_salary import calculate_managers
 from services.calculation_context import load_context_from_files
-from services.report_io import report_stem
-from salary_web.config import GENERATED_DIR, REQUIRED_REPORT_TYPES, resolve_service_data_path
+from salary_web.config import REQUIRED_REPORT_TYPES, resolve_service_data_path
 from salary_web.models import (
     AdditionalPayment,
     Calculation,
@@ -33,9 +32,6 @@ def calculate_period(db: Session, period: Period) -> list[Calculation]:
     manager_reports = calculate_managers(context)
     reports = [*manager_reports, calculate_chief(context, manager_reports)]
 
-    output_dir = GENERATED_DIR / str(period.year) / f"{period.month:02d}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     calculations = []
     for report in reports:
         employee = _get_or_create_employee(
@@ -49,9 +45,6 @@ def calculate_period(db: Session, period: Period) -> list[Calculation]:
             indent=2,
             allow_nan=False,
         )
-        snapshot_path = output_dir / f"{report_stem(report['employee'], period.year, period.month)}.json"
-        snapshot_path.write_text(snapshot_json, encoding="utf-8")
-
         calculation = (
             db.query(Calculation)
             .filter(

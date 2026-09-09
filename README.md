@@ -33,6 +33,8 @@ Salary/
 ├── calculate_salary.py          # запуск расчета JSON для B2B
 ├── main.py                      # запуск генерации PDF из JSON
 ├── requirements.txt             # зависимости Python
+├── requirements-dev.txt         # pytest, coverage и HTTP-клиент тестов
+├── pytest.ini                   # настройки тестового запуска
 ├── README.md                    # описание первичного проекта
 ├── SERVICE_README.md            # описание web-сервиса
 │
@@ -46,6 +48,7 @@ Salary/
 │
 ├── parsers/                     # чтение исходных Excel-отчетов
 ├── services/                    # поиск файлов, периодов, JSON, округления
+├── tests/                       # изолированные unit и интеграционные тесты
 ├── generators/                  # генераторы PDF и резервный DOCX-генератор
 ├── models/                      # общие модели данных
 ├── fonts/                       # шрифты для PDF

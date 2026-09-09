@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 from shutil import rmtree
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -32,6 +33,7 @@ from salary_web.config import (
     REPORT_DESCRIPTIONS,
     REPORT_TYPES,
     UPLOADS_DIR,
+    period_storage_dir,
     resolve_service_data_path,
 )
 from salary_web.calculation_runner import calculate_period
@@ -63,19 +65,29 @@ from salary_web.snapshot_presenter import (
 from salary_web.snapshot_editor import (
     append_additional_payment,
     append_adjustment,
+    append_key_client_profit,
     generate_pdf_for_calculation,
     load_snapshot,
     remove_additional_payment,
     remove_adjustment,
+    remove_key_client_profit,
+    refresh_calculated_values,
     save_snapshot_text,
     update_additional_payment,
     update_adjustment,
+    update_key_client_profit,
     update_debt_large_item_comment,
 )
 from salary_web.ui_helpers import report_type_label, status_label
 
 
-app = FastAPI(title="Salary Web")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Salary Web", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="salary_web/static"), name="static")
 templates = Jinja2Templates(directory="salary_web/templates")
 templates.env.filters["status_label"] = status_label
@@ -104,11 +116,6 @@ async def auth_middleware(request: Request, call_next):
             return JSONResponse({"detail": "Требуется авторизация"}, status_code=401)
         return RedirectResponse(url="/login", status_code=303)
     return await call_next(request)
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 @app.get("/health")
@@ -142,6 +149,7 @@ def login_page(request: Request, db: Session = Depends(get_db)):
     if current_user(request, db):
         return RedirectResponse(url="/periods", status_code=303)
     return templates.TemplateResponse(
+        request,
         "login.html",
         {"request": request, "error": ""},
     )
@@ -157,6 +165,7 @@ def login_form(
     user = authenticate_user(db, username, password)
     if user is None:
         return templates.TemplateResponse(
+            request,
             "login.html",
             {"request": request, "error": "Неверный логин или пароль"},
             status_code=401,
@@ -192,6 +201,7 @@ def periods_page(request: Request, db: Session = Depends(get_db)):
     departments = departments_for_user(db, user)
     default_department_id = default_department_for_period_form(db, user, departments)
     return templates.TemplateResponse(
+        request,
         "periods.html",
         template_context(request, db, {
             "periods": periods,
@@ -206,6 +216,7 @@ def periods_page(request: Request, db: Session = Depends(get_db)):
 def api_docs_page(request: Request, db: Session = Depends(get_db)):
     require_user(request, db)
     return templates.TemplateResponse(
+        request,
         "api_docs.html",
         template_context(request, db, {
             "api_base_url": str(request.base_url).rstrip("/"),
@@ -246,6 +257,7 @@ def period_page(year: int, month: int, request: Request, db: Session = Depends(g
     ensure_period_access(request, db, period)
     completeness = report_completeness(period)
     return templates.TemplateResponse(
+        request,
         "period_detail.html",
         template_context(request, db, {
             "period": period,
@@ -339,8 +351,11 @@ def calculation_page(
 ):
     calculation = get_calculation_or_404(db, calculation_id)
     ensure_period_access(request, db, calculation.period)
+    if calculation.snapshot_json and refresh_calculated_values(calculation):
+        db.commit()
     snapshot = load_snapshot(calculation) if calculation.snapshot_json else {}
     return templates.TemplateResponse(
+        request,
         "calculation_detail.html",
         template_context(request, db, {
             "calculation": calculation,
@@ -486,23 +501,40 @@ def add_calculation_adjustment(
     adjustment_type: str = Form(...),
     amount: float = Form(0),
     comment: str = Form(""),
+    client: str = Form(""),
+    profit: float | None = Form(None),
     return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
     calculation = get_calculation_or_404(db, calculation_id)
     ensure_period_access(request, db, calculation.period)
+    is_key_client = section_code == "key_clients_profit" and load_snapshot(calculation).get("report_type") == "chief"
+    if is_key_client:
+        client = client.strip()
+        if not client:
+            raise HTTPException(status_code=400, detail="Укажите наименование клиента")
+        if profit is None:
+            raise HTTPException(status_code=400, detail="Укажите размер прибыли")
+        adjustment_type = "key_client_profit"
+        amount = profit
+        comment = client
+
     adjustment = CalculationAdjustment(
         period_id=calculation.period_id,
         employee_id=calculation.employee_id,
         calculation_id=calculation.id,
         section_code=section_code,
+        field_code=client if is_key_client else None,
         adjustment_type=adjustment_type,
         amount=amount,
         comment=comment,
         status=ManualEntryStatus.APPROVED.value,
     )
     db.add(adjustment)
-    append_adjustment(calculation, section_code, adjustment_type, amount, comment)
+    if is_key_client:
+        append_key_client_profit(calculation, client, amount)
+    else:
+        append_adjustment(calculation, section_code, adjustment_type, amount, comment)
     db.commit()
     return RedirectResponse(
         url=with_saved_notice(return_to or f"/calculations/{calculation.id}#section-{section_code}"),
@@ -526,6 +558,32 @@ def update_calculation_adjustment(
     old_adjustment_type = adjustment.adjustment_type
     old_amount = adjustment.amount
     old_comment = adjustment.comment or ""
+    if adjustment.section_code == "key_clients_profit":
+        old_client = adjustment.field_code or old_comment
+        new_client = comment.strip()
+        if not new_client:
+            raise HTTPException(status_code=400, detail="Укажите наименование клиента")
+        if adjustment.adjustment_type == "key_client_profit":
+            update_key_client_profit(calculation, old_client, old_amount, new_client, amount)
+        else:
+            remove_adjustment(
+                calculation,
+                old_section_code,
+                old_adjustment_type,
+                old_amount,
+                old_comment,
+            )
+            append_key_client_profit(calculation, new_client, amount)
+        adjustment.field_code = new_client
+        adjustment.adjustment_type = "key_client_profit"
+        adjustment.amount = amount
+        adjustment.comment = new_client
+        adjustment.status = ManualEntryStatus.APPROVED.value
+        db.commit()
+        return RedirectResponse(
+            url=f"/calculations/{calculation.id}#section-key_clients_profit",
+            status_code=303,
+        )
     adjustment.amount = amount
     adjustment.comment = comment
     adjustment.status = ManualEntryStatus.APPROVED.value
@@ -557,13 +615,20 @@ def delete_calculation_adjustment(
     calculation = get_calculation_or_404(db, calculation_id)
     ensure_period_access(request, db, calculation.period)
     adjustment = get_adjustment_or_404(db, calculation, adjustment_id)
-    remove_adjustment(
-        calculation,
-        adjustment.section_code,
-        adjustment.adjustment_type,
-        adjustment.amount,
-        adjustment.comment or "",
-    )
+    if adjustment.section_code == "key_clients_profit" and adjustment.adjustment_type == "key_client_profit":
+        remove_key_client_profit(
+            calculation,
+            adjustment.field_code or adjustment.comment or "",
+            adjustment.amount,
+        )
+    else:
+        remove_adjustment(
+            calculation,
+            adjustment.section_code,
+            adjustment.adjustment_type,
+            adjustment.amount,
+            adjustment.comment or "",
+        )
     db.delete(adjustment)
     db.commit()
     return RedirectResponse(
@@ -617,6 +682,7 @@ def admin_page(request: Request, db: Session = Depends(get_db)):
     departments = db.query(Department).order_by(Department.name).all()
     api_keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     return templates.TemplateResponse(
+        request,
         "admin.html",
         template_context(request, db, {
             "users": users,
@@ -777,6 +843,7 @@ def create_api_key_form(
     departments = db.query(Department).order_by(Department.name).all()
     api_keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
     return templates.TemplateResponse(
+        request,
         "admin.html",
         template_context(request, db, {
             "users": users,
@@ -1633,10 +1700,18 @@ def with_saved_notice(url: str) -> str:
 
 def remove_period_calculations(db: Session, period: Period) -> None:
     for calculation in list(period.calculations):
+        if calculation.pdf_path:
+            pdf_path = resolve_service_data_path(calculation.pdf_path)
+            try:
+                if pdf_path.is_file():
+                    pdf_path.unlink()
+                    _remove_empty_parents(pdf_path.parent)
+            except OSError:
+                pass
         db.delete(calculation)
     db.flush()
 
-    output_dir = GENERATED_DIR / str(period.year) / f"{period.month:02d}"
+    output_dir = period_storage_dir(GENERATED_DIR, period)
     if output_dir.exists():
         rmtree(output_dir)
 
@@ -1657,7 +1732,7 @@ def delete_period(db: Session, period: Period) -> None:
     paths_to_delete = []
     for report in period.reports:
         if report.stored_path:
-            paths_to_delete.append(Path(report.stored_path))
+            paths_to_delete.append(resolve_service_data_path(report.stored_path))
     for calculation in period.calculations:
         if calculation.pdf_path:
             paths_to_delete.append(resolve_service_data_path(calculation.pdf_path))

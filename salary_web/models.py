@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import (
@@ -13,6 +13,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from salary_web.database import Base
+
+
+def utc_now() -> datetime:
+    """UTC timestamp kept naive for compatibility with the existing SQLite schema."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class PeriodStatus(str, Enum):
@@ -50,11 +55,11 @@ class Period(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=PeriodStatus.DRAFT.value)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     )
 
     reports: Mapped[list["UploadedReport"]] = relationship(
@@ -86,7 +91,7 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(255))
     is_admin: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     departments: Mapped[list["UserDepartment"]] = relationship(
         back_populates="user",
@@ -116,7 +121,7 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     key_secret: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     departments: Mapped[list["ApiKeyDepartment"]] = relationship(
@@ -150,7 +155,7 @@ class UploadedReport(Base):
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=ReportStatus.UPLOADED.value)
     error_message: Mapped[str | None] = mapped_column(Text)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     period: Mapped[Period] = relationship(back_populates="reports")
 
@@ -176,11 +181,11 @@ class Calculation(Base):
     status: Mapped[str] = mapped_column(String(50), default="draft")
     snapshot_json: Mapped[str | None] = mapped_column(Text)
     pdf_path: Mapped[str | None] = mapped_column(String(500))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     )
 
     period: Mapped[Period] = relationship(back_populates="calculations")
@@ -207,7 +212,7 @@ class AdditionalPayment(Base):
         String(50),
         default=ManualEntryStatus.DRAFT.value,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class CalculationAdjustment(Base):
@@ -226,4 +231,4 @@ class CalculationAdjustment(Base):
         String(50),
         default=ManualEntryStatus.DRAFT.value,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

@@ -38,17 +38,19 @@
   </div>
 
   <div class="compact-grid">
-    <div class="card upload-box compact-card">
+    <div class="card upload-box compact-card" id="report-drop-zone">
       <h2>Загрузка файлов</h2>
       <p class="muted compact-text">
-        Можно выбрать несколько файлов сразу. Тип отчета определяется по имени.
+        Перетащите файлы в этот блок или выберите их кнопкой. Можно выбрать несколько файлов сразу. Тип отчета определяется по имени.
         Повторная загрузка заменит файл. Лишние файлы будут проигнорированы.
       </p>
       <p class="error compact-text">
         Важно: цикл сделки считается на последний день выбранного периода.
       </p>
       <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/reports" enctype="multipart/form-data">
-        <input type="file" name="files" multiple required><br>
+        <input type="file" name="files" id="report-files" aria-label="Выбрать отчеты" aria-describedby="report-files-status" multiple required><br>
+        <p id="report-files-status" class="muted compact-text" role="status" aria-live="polite"></p>
+        <ul id="report-files-list"></ul>
         <button type="submit">Загрузить выбранные файлы</button>
       </form>
     </div>
@@ -114,15 +116,11 @@
   <table>
     <tr>
       <th>Сотрудник</th>
-      <th>Статус</th>
-      <th>JSON</th>
       <th class="actions-header">Действия</th>
     </tr>
     {% for calculation in period.calculations %}
       <tr>
         <td>{{ calculation.employee.full_name }}</td>
-        <td>{{ calculation.status | status_label }}</td>
-        <td>{{ "да" if calculation.snapshot_json else "нет" }}</td>
         <td class="actions-cell">
           <div class="action-list">
             <a class="table-action-button" href="/calculations/{{ calculation.id }}">Открыть расчет</a>
@@ -131,8 +129,6 @@
                 <input type="hidden" name="return_to" value="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}#calculations">
                 <button type="submit" class="table-action-button">Создать расчет в PDF</button>
               </form>
-            {% else %}
-              <span class="muted">Нет JSON</span>
             {% endif %}
             {% if calculation.pdf_path %}
               <a class="table-action-button" href="/calculations/{{ calculation.id }}/pdf/download">Скачать PDF</a>
@@ -142,4 +138,11 @@
       </tr>
     {% endfor %}
   </table>
+  <style>
+    #report-drop-zone { transition: background-color .15s, border-color .15s; }
+    #report-drop-zone.is-dragging { background: #fff0f0; border-color: #c8102e; outline: 3px solid #c8102e; outline-offset: 3px; }
+    #report-files-list { padding-left: 1.4em; max-height: 160px; overflow-y: auto; overflow-wrap: anywhere; }
+    #report-files-list:empty, #report-files-status:empty { display: none; }
+  </style>
+  <script src="{{ url_for('static', path='report-upload.js') }}" defer></script>
 {% endblock %}

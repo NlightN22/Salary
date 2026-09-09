@@ -25,5 +25,5 @@ def main():
         print(f"Создан PDF: {pdf_path}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - exercised as a process entry point
     main()

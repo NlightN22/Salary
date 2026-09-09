@@ -3,12 +3,28 @@ import os
 
 
 WEB_DIR = Path(__file__).resolve().parent
-DATA_DIR = WEB_DIR / "service_data"
+DATA_DIR = Path(os.getenv("SALARY_DATA_DIR", WEB_DIR / "service_data"))
 UPLOADS_DIR = DATA_DIR / "uploads"
 GENERATED_DIR = DATA_DIR / "generated"
 DB_PATH = DATA_DIR / "salary.db"
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
+
+
+def department_storage_code(department: object | None) -> str:
+    """Return a filesystem-safe department code for new service files."""
+    value = str(getattr(department, "code", "") or "default").strip().lower()
+    safe = "".join(character if character.isalnum() or character in "-_" else "-" for character in value)
+    return safe.strip("-") or "default"
+
+
+def period_storage_dir(root: Path, period: object) -> Path:
+    return (
+        root
+        / department_storage_code(getattr(period, "department", None))
+        / str(getattr(period, "year"))
+        / f"{int(getattr(period, 'month')):02d}"
+    )
 
 
 def resolve_service_data_path(stored_path: str | Path) -> Path:

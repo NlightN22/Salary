@@ -41,15 +41,34 @@ def load_context_from_files(year, month, files):
     if not isinstance(timesheet_files, (list, tuple)):
         timesheet_files = [timesheet_files]
 
+    profit_df = read_excel(normalized_files["profit"])
+    brand_df = read_excel(normalized_files["brand"])
+    debt_df = read_excel(normalized_files["debt"])
+    communications_df = read_excel(normalized_files["communications"])
+    cycle_df = read_excel(normalized_files["cycle"])
+    timesheet_frames = [read_excel(path) for path in timesheet_files]
+
+    _require_columns(brand_df, 9, "Brand Sales")
+    _require_columns(communications_df, 1, "Коммуникации")
+    _require_columns(timesheet_frames[0], 2, "Табель")
+
     return {
         "year": int(year),
         "month": int(month),
-        "profit": ProfitParser(read_excel(normalized_files["profit"])),
-        "brand": BrandParser(read_excel(normalized_files["brand"])),
-        "debt": DebtParser(read_excel(normalized_files["debt"])),
-        "communications": CommParser(read_excel(normalized_files["communications"])),
-        "cycle": CycleParser(read_excel(normalized_files["cycle"])),
+        "profit": ProfitParser(profit_df),
+        "brand": BrandParser(brand_df),
+        "debt": DebtParser(debt_df),
+        "communications": CommParser(communications_df),
+        "cycle": CycleParser(cycle_df),
         "timesheet": TimesheetParser(pd.concat(
-            [read_excel(path) for path in timesheet_files], ignore_index=True
+            timesheet_frames, ignore_index=True
         )),
     }
+
+
+def _require_columns(dataframe, minimum: int, report_name: str) -> None:
+    if len(dataframe.columns) < minimum:
+        raise ValueError(
+            f"Отчет «{report_name}» содержит {len(dataframe.columns)} колонок; "
+            f"требуется не менее {minimum}"
+        )

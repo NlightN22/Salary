@@ -16,5 +16,5 @@ def main():
     print(f"JSON-файлов создано: {len(reports)}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - exercised as a process entry point
     main()

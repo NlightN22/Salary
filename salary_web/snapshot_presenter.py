@@ -19,6 +19,9 @@ HIDDEN_SECTIONS = {"additional_payments", "manual_adjustments"}
 READONLY_SECTIONS = {"general", "communications"}
 
 FIELD_TITLES = {
+    "corrections": "Корректировки суммы ПДЗ",
+    "original_total": "ПДЗ по исходному отчету",
+    "adjustment_total": "Корректировка суммы ПДЗ",
     "kpi": "KPI",
     "brand": "Бренд",
     "employee": "Сотрудник",
@@ -91,8 +94,14 @@ def build_snapshot_sections(snapshot: dict) -> list[dict[str, object]]:
             "rows": _flatten_value(visible_value),
             "can_adjust": key not in READONLY_SECTIONS,
         }
+        if key == "lukoil" and isinstance(value, dict) and not value.get("calculation_enabled", True):
+            section["hide_field_table"] = True
+            section["can_adjust"] = False
+            section["lukoil_calculation_disabled"] = True
         if key == "debt":
             section["debt_large_items"] = _debt_large_items(value)
+        if key == "key_clients_profit":
+            section["key_client_items"] = _key_client_items(value)
         sections.append(section)
     return sections
 
@@ -180,7 +189,35 @@ def _section_visible_value(key: str, value):
             for item_key, item_value in value.items()
             if item_key != "large_items"
         }
+    if key == "key_clients_profit" and isinstance(value, dict):
+        visible = {
+            item_key: item_value
+            for item_key, item_value in value.items()
+            if item_key != "items"
+        }
+        if visible.get("bonus_percent") is not None:
+            visible["bonus_percent"] = _numeric(visible["bonus_percent"]) * 100
+        return visible
+    if key == "lukoil" and isinstance(value, dict) and not value.get("calculation_enabled", True):
+        return {}
     return value
+
+
+def _key_client_items(value) -> list[dict[str, str]]:
+    if not isinstance(value, dict):
+        return []
+    result = []
+    for item in value.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("client") and item.get("profit") is None and item.get("bonus") is None:
+            continue
+        result.append({
+            "client": str(item.get("client") or ""),
+            "profit": _format_value(item.get("profit"), "profit"),
+            "bonus": _format_value(item.get("bonus"), "bonus"),
+        })
+    return result
 
 
 def _debt_large_items(value) -> list[dict[str, str]]:
@@ -188,6 +225,8 @@ def _debt_large_items(value) -> list[dict[str, str]]:
         return []
     result = []
     for index, item in enumerate(value.get("large_items") or []):
+        if not isinstance(item, dict):
+            continue
         result.append({
             "index": index,
             "number": str(index + 1),

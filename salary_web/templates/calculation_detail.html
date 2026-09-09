@@ -53,6 +53,7 @@
       {% for section in sections %}
         <div class="card" id="section-{{ section.code }}">
       <h3>{{ section.title }}</h3>
+      {% if not section.hide_field_table %}
       <table class="field-table">
         <tr>
           <th>Поле</th>
@@ -65,10 +66,41 @@
           </tr>
         {% endfor %}
       </table>
+      {% endif %}
+
+      {% if section.lukoil_calculation_disabled %}
+        <p class="muted">Расчёт будет добавлен после подключения отдельного отчёта.</p>
+        <table>
+          <tr><th>Показатель</th><th>Размер бонуса</th></tr>
+          <tr><td>&nbsp;</td><td></td></tr>
+        </table>
+      {% endif %}
+
+      {% if section.code == "key_clients_profit" %}
+        <h4>Прибыль по ключевым клиентам</h4>
+        <table>
+          <tr>
+            <th>Клиент</th>
+            <th>Размер прибыли</th>
+            <th>Размер бонуса</th>
+          </tr>
+          {% if section.key_client_items %}
+            {% for item in section.key_client_items %}
+              <tr>
+                <td>{{ item.client }}</td>
+                <td>{{ item.profit }}</td>
+                <td>{{ item.bonus }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td>&nbsp;</td><td></td><td></td></tr>
+          {% endif %}
+        </table>
+      {% endif %}
 
       {% if section.debt_large_items %}
         <h4 id="debt-large-items">Клиенты с задолженностью 100 000 и более</h4>
-        <table>
+        <table class="debt-items-table">
           <tr>
             <th>№</th>
             <th>Контрагент</th>
@@ -83,7 +115,7 @@
               <td>{{ item.overdue }}</td>
               <td>
                 <form id="debt-comment-{{ item.index }}" method="post" action="/calculations/{{ calculation.id }}/debt-large-items/{{ item.index }}/comment">
-                  <input type="text" name="comment" value="{{ item.comment }}" class="table-input">
+                  <textarea name="comment" rows="3" class="debt-comment-input">{{ item.comment }}</textarea>
                 </form>
               </td>
               <td class="actions-cell">
@@ -96,12 +128,29 @@
 
       {% if section.can_adjust %}
         <div class="adjustment-box">
+          {% if section.code == "key_clients_profit" %}
+          <h4>Добавить прибыль по ключевому клиенту</h4>
+          <form method="post" action="/calculations/{{ calculation.id }}/adjustments">
+            <input type="hidden" name="section_code" value="{{ section.code }}">
+            <input type="hidden" name="adjustment_type" value="key_client_profit">
+            <input type="hidden" name="return_to" value="/calculations/{{ calculation.id }}#section-{{ section.code }}">
+            <label>Клиент<br>
+              <input type="text" name="client" required>
+            </label><br>
+            <label>Размер прибыли<br>
+              <input type="number" step="0.01" name="profit" required>
+            </label><br>
+            <p class="muted">Размер бонуса рассчитывается автоматически по проценту, указанному в расчёте.</p>
+            <button type="submit">Добавить клиента</button>
+          </form>
+          {% else %}
           <h4>Корректировка к разделу «{{ section.title }}»</h4>
           <form method="post" action="/calculations/{{ calculation.id }}/adjustments">
             <input type="hidden" name="section_code" value="{{ section.code }}">
             <input type="hidden" name="adjustment_type" value="correction">
             <input type="hidden" name="return_to" value="/calculations/{{ calculation.id }}#section-{{ section.code }}">
-            <label>Сумма корректировки<br>
+            {% if section.code == "debt" %}<p>Сумма увеличивает общую ПДЗ и пересчитывает ответственность. Для уменьшения укажите отрицательную сумму.</p>{% endif %}
+            <label>{% if section.code == "debt" %}Изменение суммы задолженности{% else %}Сумма корректировки{% endif %}<br>
               <input type="number" step="0.01" name="amount" value="0">
             </label><br>
             <label>Комментарий<br>
@@ -109,6 +158,7 @@
             </label><br>
             <button type="submit">Добавить корректировку</button>
           </form>
+          {% endif %}
         </div>
       {% endif %}
     </div>
@@ -159,15 +209,15 @@
       <tr><th>Раздел</th><th>Тип</th><th>Сумма</th><th>Комментарий</th><th>Статус</th><th>Действия</th></tr>
       {% for adjustment in calculation.adjustments %}
         <tr>
-          <td>{{ adjustment.section_code }}</td>
-          <td>{{ adjustment.adjustment_type }}</td>
+          <td>{% if adjustment.section_code == "key_clients_profit" %}Чистая прибыль по ключевым клиентам{% else %}{{ adjustment.section_code }}{% endif %}</td>
+          <td>{% if adjustment.section_code == "key_clients_profit" %}Ключевой клиент{% else %}{{ adjustment.adjustment_type }}{% endif %}</td>
           <td>
             <form id="adjustment-update-{{ adjustment.id }}" method="post" action="/calculations/{{ calculation.id }}/adjustments/{{ adjustment.id }}/update">
               <input type="number" step="0.01" name="amount" value="{{ adjustment.amount }}" class="number-input">
             </form>
           </td>
           <td>
-            <input form="adjustment-update-{{ adjustment.id }}" type="text" name="comment" value="{{ adjustment.comment or '' }}" class="table-input">
+            <input form="adjustment-update-{{ adjustment.id }}" type="text" name="comment" value="{{ adjustment.field_code or adjustment.comment or '' }}" class="table-input">
           </td>
           <td>{{ adjustment.status }}</td>
           <td class="actions-cell">

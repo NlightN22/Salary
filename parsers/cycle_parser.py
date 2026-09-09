@@ -271,10 +271,7 @@ class CycleParser:
             # Факт
             # ==========================================
 
-            elif (
-                current_stage
-                in self.FACT_STAGES
-            ):
+            else:
 
                 days = (
                     calc_date

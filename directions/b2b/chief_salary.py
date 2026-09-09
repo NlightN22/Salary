@@ -7,7 +7,6 @@ from directions.b2b.config import (
     CHIEF_HOUR_RATE,
     CHIEF_INCOME_WEIGHT,
     CHIEF_KEY_CLIENT_PROFIT_BONUS_PERCENT,
-    CHIEF_LUKOIL_BONUS_COEFFICIENT,
     CHIEF_OTHER_BONUS_BASE,
     CHIEF_OVERDUE_DEBT_PERCENT,
     CHIEF_PROFIT_BONUS_BASE,
@@ -63,20 +62,12 @@ def calculate_chief(context, manager_reports):
     zic["bonus_base"] = CHIEF_ZIC_BONUS_BASE
     zic["bonus"] = _scaled_bonus(zic["percent"], CHIEF_ZIC_BONUS_BASE)
 
-    lukoil_items = [
-        {
-            "employee": item["employee"],
-            "manager_bonus": round_half_up(item["brand"]["lukoil_bonus"]),
-        }
-        for item in manager_reports
-        if item["brand"]["lukoil_bonus"] > 0
-    ]
-    lukoil_manager_bonus_total = sum(item["manager_bonus"] for item in lukoil_items)
     lukoil = {
-        "manager_items": lukoil_items,
-        "manager_bonus_total": round_half_up(lukoil_manager_bonus_total),
-        "coefficient": CHIEF_LUKOIL_BONUS_COEFFICIENT,
-        "bonus": round_half_up(lukoil_manager_bonus_total * CHIEF_LUKOIL_BONUS_COEFFICIENT),
+        "calculation_enabled": False,
+        "manager_items": [],
+        "manager_bonus_total": 0.0,
+        "coefficient": None,
+        "bonus": 0.0,
     }
 
     key_clients_profit = {

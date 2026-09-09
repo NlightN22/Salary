@@ -38,16 +38,13 @@ class TimesheetParser:
                     row.iloc[0]
                 ).strip()
 
-                if (
-                    surname
-                    not in name.lower()
-                ):
+                normalized_name = name.lower()
+                if surname not in normalized_name:
                     continue
 
-                if (
-                    first_letter
-                    not in name.lower()
-                ):
+                name_parts = normalized_name.replace(".", " ").split()
+                reported_initial = name_parts[1][0] if len(name_parts) > 1 else ""
+                if first_letter != reported_initial:
                     continue
 
                 hours_text = str(

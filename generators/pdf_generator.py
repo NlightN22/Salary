@@ -40,6 +40,9 @@ pdfmetrics.registerFont(
 # Форматирование денег
 # ==================================================
 
+from generators.debt_adjustments import debt_adjustment_table
+
+
 def money(value):
 
     try:
@@ -521,6 +524,7 @@ def generate_pdf(
     )
 
     story.append(debt_table)
+    story.extend(debt_adjustment_table(debt_data))
 
     debt_threshold = f"{float(debt_data['threshold']):,.0f}".replace(",", " ")
     story.append(Spacer(1, 4))

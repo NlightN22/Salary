@@ -37,5 +37,5 @@ def main():
         print(f"Создан JSON менеджера: {path}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - exercised as a process entry point
     main()

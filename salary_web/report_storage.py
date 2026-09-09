@@ -4,7 +4,13 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from salary_web.config import REPORT_TYPES, REQUIRED_REPORT_TYPES, UPLOADS_DIR, stored_service_data_path
+from salary_web.config import (
+    REPORT_TYPES,
+    REQUIRED_REPORT_TYPES,
+    UPLOADS_DIR,
+    period_storage_dir,
+    stored_service_data_path,
+)
 from salary_web.models import Period, PeriodStatus, ReportStatus, UploadedReport
 
 
@@ -47,7 +53,7 @@ def should_ignore_upload(filename: str) -> bool:
 
 
 def period_upload_dir(period: Period) -> Path:
-    return UPLOADS_DIR / str(period.year) / f"{period.month:02d}"
+    return period_storage_dir(UPLOADS_DIR, period)
 
 
 def save_uploaded_report(

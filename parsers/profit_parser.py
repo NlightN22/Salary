@@ -132,12 +132,8 @@ class ProfitParser:
             if name != employee:
                 continue
 
-            try:
-                sales = float(
-                    row.iloc[self.sales_col]
-                )
-            except Exception:
-                sales = 0
+            # _is_employee_row has already verified that sales is numeric.
+            sales = float(row.iloc[self.sales_col])
 
             try:
                 income = float(

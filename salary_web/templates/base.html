@@ -251,7 +251,7 @@
         background: #fff7f7;
       }
 
-      input, select, button {
+      input, select, textarea, button {
         padding: 10px 12px;
         margin: 5px 0;
         border-radius: 10px;
@@ -259,7 +259,7 @@
         font: inherit;
       }
 
-      input:focus, select:focus {
+      input:focus, select:focus, textarea:focus {
         outline: none;
         border-color: var(--km-red);
         box-shadow: 0 0 0 3px rgba(228, 35, 44, 0.16);
@@ -314,6 +314,26 @@
       }
       .table-input { width: 95%; box-sizing: border-box; }
       .number-input { width: 140px; box-sizing: border-box; }
+      .debt-comment-input {
+        display: block;
+        width: 100%;
+        min-width: 320px;
+        min-height: 82px;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid #cfd3d8;
+        border-radius: 10px;
+        font: inherit;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        resize: vertical;
+      }
+      .debt-items-table th:nth-child(2),
+      .debt-items-table td:nth-child(2) { min-width: 190px; }
+      .debt-items-table th:nth-child(3),
+      .debt-items-table td:nth-child(3) { min-width: 150px; }
+      .debt-items-table th:nth-child(4),
+      .debt-items-table td:nth-child(4) { width: 46%; }
       .actions-header, .actions-cell { text-align: center; }
       .actions-cell {
         white-space: nowrap;

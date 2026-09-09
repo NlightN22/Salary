@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
@@ -43,7 +43,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
             int(iterations),
         )
         return hmac.compare_digest(digest.hex(), digest_hex)
-    except (ValueError, TypeError):
+    except (AttributeError, ValueError, TypeError):
         return False
 
 
@@ -155,7 +155,7 @@ def authenticate_api_key(db: Session, api_key: str | None) -> ApiKey | None:
     key = db.query(ApiKey).filter(ApiKey.key_hash == key_hash).one_or_none()
     if key is None or not key.is_active:
         return None
-    key.last_used_at = datetime.utcnow()
+    key.last_used_at = datetime.now(UTC).replace(tzinfo=None)
     db.commit()
     return key
 
