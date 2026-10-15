@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8000 \
+    SALARY_REQUIRE_SECURE_CONFIG=1 \
     APP_PUBLIC_URL=http://127.0.0.1:8000
 
 WORKDIR /app
@@ -30,4 +31,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
-CMD ["sh", "-c", "echo \"Salary web is available at ${APP_PUBLIC_URL}\" && uvicorn salary_web.app:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "echo \"Salary web is available at ${APP_PUBLIC_URL}\" && exec uvicorn salary_web.app:app --host 0.0.0.0 --port ${PORT}"]

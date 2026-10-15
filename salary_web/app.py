@@ -25,6 +25,7 @@ from salary_web.auth import (
     require_user,
     read_session_user_id,
     SESSION_COOKIE,
+    validate_security_config,
     user_department_ids,
 )
 from salary_web.config import (
@@ -83,6 +84,7 @@ from salary_web.ui_helpers import report_type_label, status_label
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    validate_security_config()
     init_db()
     yield
 
@@ -890,7 +892,33 @@ def delete_api_key_form(
     return RedirectResponse(url="/admin", status_code=303)
 
 
-@app.post("/api/periods")
+def require_legacy_api_access(request: Request, db: Session = Depends(get_db)) -> None:
+    user = require_user(request, db)
+    try:
+        params = {key: int(value) for key, value in request.path_params.items()
+                  if key in {"period_id", "year", "month", "calculation_id"}}
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Период и ID должны быть целыми числами") from error
+    if "period_id" in params:
+        period = get_period_or_404(db, int(params["period_id"]))
+    elif "year" in params:
+        if request.method == "POST" and request.url.path.count("/") == 4:
+            department = get_or_create_default_department(db)
+            if not can_access_department(user, department.id):
+                raise HTTPException(status_code=403, detail="Нет доступа к отделу")
+            return
+        period = get_period_by_date_or_404(db, int(params["year"]), int(params["month"]))
+    elif "calculation_id" in params:
+        period = get_calculation_or_404(db, int(params["calculation_id"])).period
+    else:
+        department = get_or_create_default_department(db)
+        if not can_access_department(user, department.id):
+            raise HTTPException(status_code=403, detail="Нет доступа к отделу")
+        return
+    ensure_period_access(request, db, period)
+
+
+@app.post("/api/periods", dependencies=[Depends(require_legacy_api_access)])
 def create_period_api(
     year: int = Form(...),
     month: int = Form(...),
@@ -900,19 +928,19 @@ def create_period_api(
     return serialize_period(period)
 
 
-@app.get("/api/periods/{period_id}")
+@app.get("/api/periods/{period_id}", dependencies=[Depends(require_legacy_api_access)])
 def period_api(period_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
     period = get_period_or_404(db, period_id)
     return serialize_period(period)
 
 
-@app.get("/api/periods/{period_id}/validation")
+@app.get("/api/periods/{period_id}/validation", dependencies=[Depends(require_legacy_api_access)])
 def validate_period_api(period_id: int, db: Session = Depends(get_db)):
     period = get_period_or_404(db, period_id)
     return report_completeness(period)
 
 
-@app.post("/api/periods/{period_id}/validate")
+@app.post("/api/periods/{period_id}/validate", dependencies=[Depends(require_legacy_api_access)])
 def validate_period_reports_api(period_id: int, db: Session = Depends(get_db)):
     period = get_period_or_404(db, period_id)
     result = validate_period_reports(db, period)
@@ -920,7 +948,7 @@ def validate_period_reports_api(period_id: int, db: Session = Depends(get_db)):
     return result
 
 
-@app.post("/api/periods/{period_id}/reports/{report_type}")
+@app.post("/api/periods/{period_id}/reports/{report_type}", dependencies=[Depends(require_legacy_api_access)])
 def upload_report_api(
     period_id: int,
     report_type: str,
@@ -956,7 +984,7 @@ def upload_report_to_period_api(
     }
 
 
-@app.post("/api/periods/{period_id}/calculate")
+@app.post("/api/periods/{period_id}/calculate", dependencies=[Depends(require_legacy_api_access)])
 def calculate_period_api(
     period_id: int,
     db: Session = Depends(get_db),
@@ -979,7 +1007,7 @@ def calculate_period_response(db: Session, period: Period) -> dict[str, object]:
     }
 
 
-@app.post("/api/periods/{period_id}/pdf")
+@app.post("/api/periods/{period_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
 def generate_period_pdfs_api(
     period_id: int,
     db: Session = Depends(get_db),
@@ -988,7 +1016,7 @@ def generate_period_pdfs_api(
     return generate_period_pdfs_response(db, period)
 
 
-@app.post("/api/periods/{year}/{month}")
+@app.post("/api/periods/{year}/{month}", dependencies=[Depends(require_legacy_api_access)])
 def create_period_by_date_api(
     year: int,
     month: int,
@@ -998,19 +1026,19 @@ def create_period_by_date_api(
     return serialize_period(period)
 
 
-@app.get("/api/periods/{year}/{month}")
+@app.get("/api/periods/{year}/{month}", dependencies=[Depends(require_legacy_api_access)])
 def period_by_date_api(year: int, month: int, db: Session = Depends(get_db)) -> dict[str, object]:
     period = get_period_by_date_or_404(db, year, month)
     return serialize_period(period)
 
 
-@app.get("/api/periods/{year}/{month}/validation")
+@app.get("/api/periods/{year}/{month}/validation", dependencies=[Depends(require_legacy_api_access)])
 def validate_period_by_date_api(year: int, month: int, db: Session = Depends(get_db)):
     period = get_period_by_date_or_404(db, year, month)
     return report_completeness(period)
 
 
-@app.post("/api/periods/{year}/{month}/validate")
+@app.post("/api/periods/{year}/{month}/validate", dependencies=[Depends(require_legacy_api_access)])
 def validate_period_reports_by_date_api(year: int, month: int, db: Session = Depends(get_db)):
     period = get_period_by_date_or_404(db, year, month)
     result = validate_period_reports(db, period)
@@ -1018,7 +1046,7 @@ def validate_period_reports_by_date_api(year: int, month: int, db: Session = Dep
     return result
 
 
-@app.post("/api/periods/{year}/{month}/reports/{report_type}")
+@app.post("/api/periods/{year}/{month}/reports/{report_type}", dependencies=[Depends(require_legacy_api_access)])
 def upload_report_by_date_api(
     year: int,
     month: int,
@@ -1030,7 +1058,7 @@ def upload_report_by_date_api(
     return upload_report_to_period_api(db, period, report_type, file)
 
 
-@app.post("/api/periods/{year}/{month}/calculate")
+@app.post("/api/periods/{year}/{month}/calculate", dependencies=[Depends(require_legacy_api_access)])
 def calculate_period_by_date_api(
     year: int,
     month: int,
@@ -1040,7 +1068,7 @@ def calculate_period_by_date_api(
     return calculate_period_response(db, period)
 
 
-@app.post("/api/periods/{year}/{month}/pdf")
+@app.post("/api/periods/{year}/{month}/pdf", dependencies=[Depends(require_legacy_api_access)])
 def generate_period_pdfs_by_date_api(
     year: int,
     month: int,
@@ -1050,7 +1078,7 @@ def generate_period_pdfs_by_date_api(
     return generate_period_pdfs_response(db, period)
 
 
-@app.get("/api/periods/{year}/{month}/calculations")
+@app.get("/api/periods/{year}/{month}/calculations", dependencies=[Depends(require_legacy_api_access)])
 def period_calculations_by_date_api(
     year: int,
     month: int,
@@ -1068,7 +1096,7 @@ def period_calculations_by_date_api(
     }
 
 
-@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}")
+@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}", dependencies=[Depends(require_legacy_api_access)])
 def period_calculation_by_date_api(
     year: int,
     month: int,
@@ -1080,7 +1108,7 @@ def period_calculation_by_date_api(
     return serialize_calculation(calculation)
 
 
-@app.post("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf")
+@app.post("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
 def generate_period_calculation_pdf_by_date_api(
     year: int,
     month: int,
@@ -1097,7 +1125,7 @@ def generate_period_calculation_pdf_by_date_api(
     return serialize_pdf_result(period, calculation, pdf_path)
 
 
-@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf/download")
+@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf/download", dependencies=[Depends(require_legacy_api_access)])
 def download_period_calculation_pdf_by_date_api(
     year: int,
     month: int,
@@ -1317,13 +1345,13 @@ def generate_period_pdfs_response(
     return result
 
 
-@app.get("/api/calculations/{calculation_id}")
+@app.get("/api/calculations/{calculation_id}", dependencies=[Depends(require_legacy_api_access)])
 def calculation_api(calculation_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
     calculation = get_calculation_or_404(db, calculation_id)
     return serialize_calculation(calculation)
 
 
-@app.post("/api/calculations/{calculation_id}/pdf")
+@app.post("/api/calculations/{calculation_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
 def generate_calculation_pdf_api(
     calculation_id: int,
     db: Session = Depends(get_db),
@@ -1337,7 +1365,7 @@ def generate_calculation_pdf_api(
     return serialize_pdf_result(calculation.period, calculation, pdf_path)
 
 
-@app.get("/api/calculations/{calculation_id}/pdf/download")
+@app.get("/api/calculations/{calculation_id}/pdf/download", dependencies=[Depends(require_legacy_api_access)])
 def download_calculation_pdf_api(calculation_id: int, db: Session = Depends(get_db)):
     calculation = get_calculation_or_404(db, calculation_id)
     return calculation_pdf_response(calculation)

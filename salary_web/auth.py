@@ -13,8 +13,19 @@ from salary_web.models import ApiKey, ApiKeyDepartment, Department, User, UserDe
 DEFAULT_DEPARTMENT_CODE = "b2b"
 DEFAULT_DEPARTMENT_NAME = "B2B-направление"
 SESSION_COOKIE = "salary_user"
-SESSION_SECRET = os.getenv("SALARY_SESSION_SECRET", "salary-web-local-session-change-me")
+SESSION_SECRET = os.getenv("SALARY_SESSION_SECRET") or secrets.token_urlsafe(32)
 API_KEY_HEADER = "X-API-Key"
+
+
+def validate_security_config() -> None:
+    if os.getenv("SALARY_REQUIRE_SECURE_CONFIG") != "1":
+        return
+    secret = os.getenv("SALARY_SESSION_SECRET", "")
+    if len(secret) < 32 or secret in {
+        "salary-web-local-session-change-me", "change-me-before-production",
+        "replace-this-with-a-long-random-string",
+    }:
+        raise RuntimeError("Задайте SALARY_SESSION_SECRET: случайный секрет не короче 32 символов")
 
 
 def hash_password(password: str) -> str:
@@ -77,18 +88,20 @@ def read_session_user_id(request: Request) -> int | None:
 
 def ensure_default_auth_data(db: Session) -> None:
     department = get_or_create_default_department(db)
-    admin = db.query(User).filter(User.username == "admin").one_or_none()
-    if admin is None:
+    if db.query(User).first() is None:
+        password = os.getenv("SALARY_ADMIN_PASSWORD", "")
+        if len(password) < 12 or password == "replace-with-a-strong-password":
+            raise RuntimeError("Для первой настройки задайте SALARY_ADMIN_PASSWORD (не менее 12 символов)")
         admin = User(
             username="admin",
-            password_hash=hash_password("admin"),
+            password_hash=hash_password(password),
             full_name="Администратор",
             is_admin=1,
             is_active=1,
         )
         db.add(admin)
         db.flush()
-    _ensure_user_department(db, admin, department)
+        _ensure_user_department(db, admin, department)
     db.commit()
 
 

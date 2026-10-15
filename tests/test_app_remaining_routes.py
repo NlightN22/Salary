@@ -38,7 +38,7 @@ def test_public_and_authenticated_middleware_paths():
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/login").status_code == 200
         assert client.get("/api/periods/999").status_code == 401
-        client.post("/login", data={"username": "admin", "password": "admin"})
+        client.post("/login", data={"username": "admin", "password": "test-admin-password"})
         assert client.get("/").headers["location"] == "/periods"
 
 

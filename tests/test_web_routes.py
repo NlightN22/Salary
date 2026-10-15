@@ -17,7 +17,7 @@ def test_complete_web_admin_and_manual_entry_workflow():
         assert client.get("/").headers["location"] == "/login"
         assert client.get("/periods").status_code == 303
         assert client.post("/login", data={"username": "bad", "password": "bad"}).status_code == 401
-        login = client.post("/login", data={"username": "admin", "password": "admin"})
+        login = client.post("/login", data={"username": "admin", "password": "test-admin-password"})
         assert login.status_code == 303
         assert client.get("/login").status_code == 303
         assert client.get("/periods").status_code == 200
@@ -123,7 +123,7 @@ def test_web_and_legacy_api_error_branches():
     marker = uuid.uuid4().hex[:8]
     year = 2600 + int(marker[:2], 16)
     with TestClient(app, follow_redirects=False) as client:
-        client.post("/login", data={"username": "admin", "password": "admin"})
+        client.post("/login", data={"username": "admin", "password": "test-admin-password"})
         db = SessionLocal()
         admin = db.query(User).filter_by(username="admin").one()
         department = db.query(Department).filter_by(code="b2b").one()

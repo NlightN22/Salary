@@ -31,7 +31,7 @@ def valid_frames():
             "Дата последнего изменения": [None],
         }),
         "timesheet-1.xlsx": pd.DataFrame([["Иванов И.И.", 80]]),
-        "timesheet-2.xlsx": pd.DataFrame([["Иванов И.И.", 80]]),
+        "timesheet-2.xlsx": pd.DataFrame([["Петров П.П.", 80]]),
     }
 
 

@@ -356,6 +356,7 @@ PDF и API для интеграции с 1С/CRM.
 
 ```bash
 cp .env.example .env
+# Заполните SALARY_SESSION_SECRET и SALARY_ADMIN_PASSWORD в .env
 docker compose up --build
 ```
 

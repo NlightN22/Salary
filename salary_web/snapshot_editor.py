@@ -30,6 +30,7 @@ def save_snapshot(calculation: Calculation, report: dict) -> None:
         allow_nan=False,
     )
     calculation.status = "edited"
+    calculation.pdf_path = None
 
 
 def refresh_calculated_values(calculation: Calculation) -> bool:
@@ -49,6 +50,7 @@ def refresh_calculated_values(calculation: Calculation) -> bool:
         allow_nan=False,
     )
     calculation.status = "edited"
+    calculation.pdf_path = None
     return True
 
 

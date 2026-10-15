@@ -50,7 +50,21 @@ def load_context_from_files(year, month, files):
 
     _require_columns(brand_df, 9, "Brand Sales")
     _require_columns(communications_df, 1, "Коммуникации")
-    _require_columns(timesheet_frames[0], 2, "Табель")
+    seen = set()
+    for frame in timesheet_frames:
+        _require_columns(frame, 2, "Табель")
+        for _, row in frame.iterrows():
+            name = str(row.iloc[0]).lower().replace(".", " ").split()
+            try:
+                float(str(row.iloc[1]).split("\n")[0].replace(",", ".").strip())
+            except ValueError:
+                continue
+            if len(name) < 2:
+                continue
+            identity = (name[0], name[1][0])
+            if identity in seen:
+                raise ValueError(f"Повтор сотрудника в табелях: {row.iloc[0]}. Удалите дублирующую запись")
+            seen.add(identity)
 
     return {
         "year": int(year),

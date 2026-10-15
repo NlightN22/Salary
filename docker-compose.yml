@@ -6,10 +6,12 @@ services:
     container_name: salary-web
     restart: unless-stopped
     environment:
-      PORT: ${PORT:-8000}
-      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://127.0.0.1:8000}
+      PORT: 8000
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://127.0.0.1:${PORT:-8000}}
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/salary_web/service_data/salary.db}
-      SALARY_SESSION_SECRET: ${SALARY_SESSION_SECRET:-change-me-before-production}
+      SALARY_REQUIRE_SECURE_CONFIG: "1"
+      SALARY_SESSION_SECRET: ${SALARY_SESSION_SECRET:?Set SALARY_SESSION_SECRET in .env}
+      SALARY_ADMIN_PASSWORD: ${SALARY_ADMIN_PASSWORD:-}
     ports:
       - "127.0.0.1:${PORT:-8000}:8000"
     volumes:

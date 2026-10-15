@@ -1,4 +1,5 @@
 import hashlib
+import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -67,19 +68,20 @@ def save_uploaded_report(
     target_dir = period_upload_dir(period)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    suffix = Path(upload.filename or "").suffix
+    reports = db.query(UploadedReport).filter(
+        UploadedReport.period_id == period.id,
+        UploadedReport.report_type == report_type,
+    )
     if report_type == "timesheet":
-        existing_count = (
-            db.query(UploadedReport)
-            .filter(
-                UploadedReport.period_id == period.id,
-                UploadedReport.report_type == report_type,
-            )
-            .count()
-        )
-        filename = f"{report_type}_{existing_count + 1}{suffix}"
-    else:
-        filename = f"{report_type}{suffix}"
+        reports = reports.filter(UploadedReport.original_filename == upload.filename)
+    matches = reports.order_by(UploadedReport.id.desc()).all()
+    report = matches[0] if matches else None
+    # Retire old duplicate rows created by earlier versions on re-upload.
+    for duplicate in matches[1:]:
+        db.delete(duplicate)
+    suffix = Path(upload.filename or "").suffix
+    filename = (f"timesheet_{uuid.uuid4().hex}{suffix}" if report_type == "timesheet"
+                else f"{report_type}{suffix}")
     target_path = target_dir / filename
 
     hasher = hashlib.sha256()
@@ -90,16 +92,6 @@ def save_uploaded_report(
 
     file_hash = hasher.hexdigest()
 
-    report = None
-    if report_type != "timesheet":
-        report = (
-            db.query(UploadedReport)
-            .filter(
-                UploadedReport.period_id == period.id,
-                UploadedReport.report_type == report_type,
-            )
-            .one_or_none()
-        )
     if report is None:
         report = UploadedReport(
             period_id=period.id,

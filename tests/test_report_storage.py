@@ -65,8 +65,8 @@ def test_reupload_replaces_single_report_record(db, tmp_path, monkeypatch):
 def test_timesheets_are_added_instead_of_replaced(db, tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "UPLOADS_DIR", tmp_path)
     period = make_period(db)
-    for value in (b"one", b"two"):
-        storage.save_uploaded_report(db, period, "timesheet", UploadFile(filename="Табель.xlsx", file=BytesIO(value)))
+    for name, value in (("Табель.xlsx", b"one"), ("Табель 2.xlsx", b"two")):
+        storage.save_uploaded_report(db, period, "timesheet", UploadFile(filename=name, file=BytesIO(value)))
     assert db.query(UploadedReport).filter_by(period_id=period.id, report_type="timesheet").count() == 2
 
 
