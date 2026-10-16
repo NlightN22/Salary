@@ -44,6 +44,7 @@ def migrate_db() -> None:
         return
 
     with engine.begin() as connection:
+        _add_column_if_missing(connection, "users", "session_version", "INTEGER NOT NULL DEFAULT 0")
         has_uploaded_reports = connection.execute(text(
             "SELECT name FROM sqlite_master "
             "WHERE type='table' AND name='uploaded_reports'"

@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from shutil import rmtree
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit, quote, unquote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from salary_web.auth import (
-    API_KEY_HEADER,
     authenticate_user,
     can_access_department,
     current_user,
@@ -25,6 +24,7 @@ from salary_web.auth import (
     require_user,
     read_session_user_id,
     SESSION_COOKIE,
+    SESSION_LIFETIME,
     validate_security_config,
     user_department_ids,
 )
@@ -46,6 +46,7 @@ from salary_web.models import (
     Calculation,
     CalculationAdjustment,
     Department,
+    Employee,
     ManualEntryStatus,
     Period,
     PeriodStatus,
@@ -56,12 +57,12 @@ from salary_web.report_storage import (
     report_completeness,
     save_uploaded_report,
     save_uploaded_reports_batch,
+    validate_report_type,
 )
 from salary_web.report_validation import validate_period_reports
 from salary_web.snapshot_presenter import (
     build_final_summary_rows,
     build_snapshot_sections,
-    build_summary_rows,
 )
 from salary_web.snapshot_editor import (
     append_additional_payment,
@@ -74,6 +75,7 @@ from salary_web.snapshot_editor import (
     remove_key_client_profit,
     refresh_calculated_values,
     save_snapshot_text,
+    save_snapshot,
     update_additional_payment,
     update_adjustment,
     update_key_client_profit,
@@ -92,6 +94,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Salary Web", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="salary_web/static"), name="static")
 templates = Jinja2Templates(directory="salary_web/templates")
+templates.env.globals["period_url"] = lambda period: period_url(period)
 templates.env.filters["status_label"] = status_label
 templates.env.filters["report_type_label"] = report_type_label
 
@@ -114,7 +117,7 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/departments/"):
         return await call_next(request)
     if not read_session_user_id(request):
-        if request.url.path.startswith("/api"):
+        if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": "Требуется авторизация"}, status_code=401)
         return RedirectResponse(url="/login", status_code=303)
     return await call_next(request)
@@ -175,9 +178,11 @@ def login_form(
     response = RedirectResponse(url="/periods", status_code=303)
     response.set_cookie(
         SESSION_COOKIE,
-        make_session_token(user.id),
+        make_session_token(user.id, user.session_version),
         httponly=True,
         samesite="lax",
+        max_age=SESSION_LIFETIME,
+        secure=request.url.scheme == "https",
     )
     return response
 
@@ -253,10 +258,12 @@ def delete_period_form(
     return RedirectResponse(url="/periods", status_code=303)
 
 
-@app.get("/periods/{year}/{month}", response_class=HTMLResponse)
+@app.get("/{department_name}/{year:int}/{month:int}", response_class=HTMLResponse)
 def period_page(year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
+    if request.url.path != unquote(period_url(period)):
+        return RedirectResponse(url=period_url(period), status_code=303)
     completeness = report_completeness(period)
     return templates.TemplateResponse(
         request,
@@ -271,14 +278,7 @@ def period_page(year: int, month: int, request: Request, db: Session = Depends(g
     )
 
 
-@app.get("/periods/{period_id}", response_class=HTMLResponse)
-def legacy_period_page(period_id: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_or_404(db, period_id)
-    ensure_period_access(request, db, period)
-    return RedirectResponse(url=period_url(period), status_code=303)
-
-
-@app.post("/periods/{year}/{month}/reports")
+@app.post("/{department_name}/{year:int}/{month:int}/reports")
 def upload_report_form(
     year: int,
     month: int,
@@ -286,32 +286,32 @@ def upload_report_form(
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
     try:
         saved_reports = save_uploaded_reports_batch(db, period, files)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     if saved_reports:
-        remove_period_calculations(db, period)
+        remove_period_calculations(db, period, preserve_manual=True)
     if report_completeness(period)["complete"]:
         validate_period_reports(db, period)
     db.commit()
     return RedirectResponse(url=period_url(period), status_code=303)
 
 
-@app.post("/periods/{year}/{month}/validate")
+@app.post("/{department_name}/{year:int}/{month:int}/validate")
 def validate_period_form(year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
     validate_period_reports(db, period)
     db.commit()
     return RedirectResponse(url=period_url(period), status_code=303)
 
 
-@app.post("/periods/{year}/{month}/calculate")
+@app.post("/{department_name}/{year:int}/{month:int}/calculate")
 def calculate_period_form(year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
     try:
         calculate_period(db, period)
@@ -321,9 +321,9 @@ def calculate_period_form(year: int, month: int, request: Request, db: Session =
     return RedirectResponse(url=period_url(period), status_code=303)
 
 
-@app.post("/periods/{year}/{month}/pdf")
+@app.post("/{department_name}/{year:int}/{month:int}/pdf")
 def generate_period_pdfs_form(year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
     try:
         calculations = calculate_period(db, period)
@@ -336,13 +336,67 @@ def generate_period_pdfs_form(year: int, month: int, request: Request, db: Sessi
     return RedirectResponse(url=f"{period_url(period)}#calculations", status_code=303)
 
 
-@app.post("/periods/{year}/{month}/calculations/delete")
+@app.post("/{department_name}/{year:int}/{month:int}/calculations/delete")
 def delete_period_calculations_form(year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
+    period = get_web_period(request, db, year, month)
     ensure_period_access(request, db, period)
     remove_period_calculations(db, period)
     db.commit()
     return RedirectResponse(url=f"{period_url(period)}#calculations", status_code=303)
+
+
+@app.post("/calculations/{calculation_id}/calculate")
+def calculate_employee_form(calculation_id: int, request: Request, db: Session = Depends(get_db)):
+    calculation = get_calculation_or_404(db, calculation_id)
+    ensure_period_access(request, db, calculation.period)
+    if calculation.snapshot_json and load_snapshot(calculation).get("report_type") == "manual":
+        refresh_calculated_values(calculation)
+        db.commit()
+        return RedirectResponse(url=f"/calculations/{calculation.id}", status_code=303)
+    try:
+        calculate_period(db, calculation.period, employee_name=calculation.employee.full_name)
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    db.commit()
+    return RedirectResponse(url=f"{period_url(calculation.period)}#calculations", status_code=303)
+
+
+@app.post("/calculations/{calculation_id}/delete")
+def delete_calculation_form(calculation_id: int, request: Request, db: Session = Depends(get_db)):
+    calculation = get_calculation_or_404(db, calculation_id)
+    ensure_period_access(request, db, calculation.period)
+    target = f"{period_url(calculation.period)}#calculations"
+    remove_calculation(db, calculation)
+    db.commit()
+    return RedirectResponse(url=target, status_code=303)
+
+
+@app.post("/{department_name}/{year:int}/{month:int}/manual-calculations")
+def create_manual_calculation(
+    year: int, month: int, request: Request,
+    employee_name: str = Form(..., max_length=255), db: Session = Depends(get_db),
+):
+    period = get_web_period(request, db, year, month)
+    ensure_period_access(request, db, period)
+    name = " ".join(employee_name.split())
+    if not name:
+        raise HTTPException(status_code=400, detail="Укажите ФИО сотрудника")
+    employee = db.query(Employee).filter_by(full_name=name).one_or_none()
+    try:
+        if employee is None:
+            employee = Employee(full_name=name, role="manual")
+            db.add(employee)
+            db.flush()
+        if db.query(Calculation).filter_by(period_id=period.id, employee_id=employee.id).first():
+            raise HTTPException(status_code=409, detail="Расчет сотрудника за этот период уже существует")
+        calculation = Calculation(period=period, employee=employee)
+        save_snapshot(calculation, {"report_type": "manual", "employee": name})
+        db.add(calculation)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Расчет уже создан; обновите страницу")
+    return RedirectResponse(url=f"/calculations/{calculation.id}", status_code=303)
 
 
 @app.get("/calculations/{calculation_id}", response_class=HTMLResponse)
@@ -358,14 +412,15 @@ def calculation_page(
     snapshot = load_snapshot(calculation) if calculation.snapshot_json else {}
     return templates.TemplateResponse(
         request,
-        "calculation_detail.html",
+        "manual_calculation_detail.html" if snapshot.get("report_type") == "manual" else "calculation_detail.html",
         template_context(request, db, {
             "calculation": calculation,
             "snapshot": snapshot,
             "final_summary_rows": build_final_summary_rows(snapshot),
-            "summary_rows": build_summary_rows(snapshot),
-            "sections": build_snapshot_sections(snapshot),
-            "snapshot_text": calculation.snapshot_json or "",
+            "sections": build_snapshot_sections(snapshot, [
+                {"section_code": item.section_code, "amount": item.amount, "comment": item.comment}
+                for item in calculation.adjustments
+            ]),
             "months": MONTHS,
         }),
     )
@@ -393,7 +448,7 @@ def add_calculation_payment(
     calculation_id: int,
     request: Request,
     title: str = Form(...),
-    amount: float = Form(...),
+    amount: float = Form(..., ge=-1e12, le=1e12, allow_inf_nan=False),
     comment: str = Form(""),
     return_to: str = Form(""),
     db: Session = Depends(get_db),
@@ -424,7 +479,7 @@ def update_calculation_payment(
     payment_id: int,
     request: Request,
     title: str = Form(...),
-    amount: float = Form(...),
+    amount: float = Form(..., ge=-1e12, le=1e12, allow_inf_nan=False),
     comment: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -501,10 +556,10 @@ def add_calculation_adjustment(
     request: Request,
     section_code: str = Form(...),
     adjustment_type: str = Form(...),
-    amount: float = Form(0),
+    amount: float = Form(0, ge=-1e12, le=1e12, allow_inf_nan=False),
     comment: str = Form(""),
     client: str = Form(""),
-    profit: float | None = Form(None),
+    profit: float | None = Form(None, ge=-1e12, le=1e12, allow_inf_nan=False),
     return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -549,7 +604,7 @@ def update_calculation_adjustment(
     calculation_id: int,
     adjustment_id: int,
     request: Request,
-    amount: float = Form(0),
+    amount: float = Form(0, ge=-1e12, le=1e12, allow_inf_nan=False),
     comment: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -755,6 +810,7 @@ def change_user_password_form(
     if user is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     user.password_hash = hash_password(password)
+    user.session_version += 1
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -892,84 +948,14 @@ def delete_api_key_form(
     return RedirectResponse(url="/admin", status_code=303)
 
 
-def require_legacy_api_access(request: Request, db: Session = Depends(get_db)) -> None:
-    user = require_user(request, db)
-    try:
-        params = {key: int(value) for key, value in request.path_params.items()
-                  if key in {"period_id", "year", "month", "calculation_id"}}
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail="Период и ID должны быть целыми числами") from error
-    if "period_id" in params:
-        period = get_period_or_404(db, int(params["period_id"]))
-    elif "year" in params:
-        if request.method == "POST" and request.url.path.count("/") == 4:
-            department = get_or_create_default_department(db)
-            if not can_access_department(user, department.id):
-                raise HTTPException(status_code=403, detail="Нет доступа к отделу")
-            return
-        period = get_period_by_date_or_404(db, int(params["year"]), int(params["month"]))
-    elif "calculation_id" in params:
-        period = get_calculation_or_404(db, int(params["calculation_id"])).period
-    else:
-        department = get_or_create_default_department(db)
-        if not can_access_department(user, department.id):
-            raise HTTPException(status_code=403, detail="Нет доступа к отделу")
-        return
-    ensure_period_access(request, db, period)
-
-
-@app.post("/api/periods", dependencies=[Depends(require_legacy_api_access)])
-def create_period_api(
-    year: int = Form(...),
-    month: int = Form(...),
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = create_period(db, year, month)
-    return serialize_period(period)
-
-
-@app.get("/api/periods/{period_id}", dependencies=[Depends(require_legacy_api_access)])
-def period_api(period_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
-    period = get_period_or_404(db, period_id)
-    return serialize_period(period)
-
-
-@app.get("/api/periods/{period_id}/validation", dependencies=[Depends(require_legacy_api_access)])
-def validate_period_api(period_id: int, db: Session = Depends(get_db)):
-    period = get_period_or_404(db, period_id)
-    return report_completeness(period)
-
-
-@app.post("/api/periods/{period_id}/validate", dependencies=[Depends(require_legacy_api_access)])
-def validate_period_reports_api(period_id: int, db: Session = Depends(get_db)):
-    period = get_period_or_404(db, period_id)
-    result = validate_period_reports(db, period)
-    db.commit()
-    return result
-
-
-@app.post("/api/periods/{period_id}/reports/{report_type}", dependencies=[Depends(require_legacy_api_access)])
-def upload_report_api(
-    period_id: int,
-    report_type: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_or_404(db, period_id)
-    return upload_report_to_period_api(db, period, report_type, file)
-
-
 def upload_report_to_period_api(
     db: Session,
     period: Period,
     report_type: str,
     file: UploadFile,
 ) -> dict[str, object]:
-    try:
-        report = save_uploaded_report(db, period, report_type, file)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    remove_period_calculations(db, period)
+    report = save_uploaded_report(db, period, report_type, file)
+    remove_period_calculations(db, period, preserve_manual=True)
     if report_completeness(period)["complete"]:
         validate_period_reports(db, period)
     db.commit()
@@ -984,15 +970,6 @@ def upload_report_to_period_api(
     }
 
 
-@app.post("/api/periods/{period_id}/calculate", dependencies=[Depends(require_legacy_api_access)])
-def calculate_period_api(
-    period_id: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_or_404(db, period_id)
-    return calculate_period_response(db, period)
-
-
 def calculate_period_response(db: Session, period: Period) -> dict[str, object]:
     try:
         calculations = calculate_period(db, period)
@@ -1005,136 +982,6 @@ def calculate_period_response(db: Session, period: Period) -> dict[str, object]:
         "status": period.status,
         "calculations_created": len(calculations),
     }
-
-
-@app.post("/api/periods/{period_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
-def generate_period_pdfs_api(
-    period_id: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_or_404(db, period_id)
-    return generate_period_pdfs_response(db, period)
-
-
-@app.post("/api/periods/{year}/{month}", dependencies=[Depends(require_legacy_api_access)])
-def create_period_by_date_api(
-    year: int,
-    month: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = create_period(db, year, month)
-    return serialize_period(period)
-
-
-@app.get("/api/periods/{year}/{month}", dependencies=[Depends(require_legacy_api_access)])
-def period_by_date_api(year: int, month: int, db: Session = Depends(get_db)) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    return serialize_period(period)
-
-
-@app.get("/api/periods/{year}/{month}/validation", dependencies=[Depends(require_legacy_api_access)])
-def validate_period_by_date_api(year: int, month: int, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
-    return report_completeness(period)
-
-
-@app.post("/api/periods/{year}/{month}/validate", dependencies=[Depends(require_legacy_api_access)])
-def validate_period_reports_by_date_api(year: int, month: int, db: Session = Depends(get_db)):
-    period = get_period_by_date_or_404(db, year, month)
-    result = validate_period_reports(db, period)
-    db.commit()
-    return result
-
-
-@app.post("/api/periods/{year}/{month}/reports/{report_type}", dependencies=[Depends(require_legacy_api_access)])
-def upload_report_by_date_api(
-    year: int,
-    month: int,
-    report_type: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    return upload_report_to_period_api(db, period, report_type, file)
-
-
-@app.post("/api/periods/{year}/{month}/calculate", dependencies=[Depends(require_legacy_api_access)])
-def calculate_period_by_date_api(
-    year: int,
-    month: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    return calculate_period_response(db, period)
-
-
-@app.post("/api/periods/{year}/{month}/pdf", dependencies=[Depends(require_legacy_api_access)])
-def generate_period_pdfs_by_date_api(
-    year: int,
-    month: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    return generate_period_pdfs_response(db, period)
-
-
-@app.get("/api/periods/{year}/{month}/calculations", dependencies=[Depends(require_legacy_api_access)])
-def period_calculations_by_date_api(
-    year: int,
-    month: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    return {
-        "period_id": period.id,
-        "year": period.year,
-        "month": period.month,
-        "calculations": [
-            serialize_calculation_summary(period, calculation)
-            for calculation in period.calculations
-        ],
-    }
-
-
-@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}", dependencies=[Depends(require_legacy_api_access)])
-def period_calculation_by_date_api(
-    year: int,
-    month: int,
-    calculation_id: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    calculation = get_period_calculation_or_404(db, period, calculation_id)
-    return serialize_calculation(calculation)
-
-
-@app.post("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
-def generate_period_calculation_pdf_by_date_api(
-    year: int,
-    month: int,
-    calculation_id: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    period = get_period_by_date_or_404(db, year, month)
-    calculation = get_period_calculation_or_404(db, period, calculation_id)
-    try:
-        pdf_path = generate_pdf_for_calculation(db, calculation)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    db.commit()
-    return serialize_pdf_result(period, calculation, pdf_path)
-
-
-@app.get("/api/periods/{year}/{month}/calculations/{calculation_id}/pdf/download", dependencies=[Depends(require_legacy_api_access)])
-def download_period_calculation_pdf_by_date_api(
-    year: int,
-    month: int,
-    calculation_id: int,
-    db: Session = Depends(get_db),
-):
-    period = get_period_by_date_or_404(db, year, month)
-    calculation = get_period_calculation_or_404(db, period, calculation_id)
-    return calculation_pdf_response(calculation)
 
 
 @app.post("/api/departments/{department_code}/periods/{year}/{month}")
@@ -1207,6 +1054,10 @@ def upload_department_report_api(
 ) -> dict[str, object]:
     department = get_department_by_code_or_404(db, department_code)
     require_api_key_for_department(request, db, department)
+    try:
+        validate_report_type(report_type)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     period = create_period(db, year, month, department_id=department.id)
     return upload_report_to_period_api(db, period, report_type, file)
 
@@ -1345,32 +1196,6 @@ def generate_period_pdfs_response(
     return result
 
 
-@app.get("/api/calculations/{calculation_id}", dependencies=[Depends(require_legacy_api_access)])
-def calculation_api(calculation_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
-    calculation = get_calculation_or_404(db, calculation_id)
-    return serialize_calculation(calculation)
-
-
-@app.post("/api/calculations/{calculation_id}/pdf", dependencies=[Depends(require_legacy_api_access)])
-def generate_calculation_pdf_api(
-    calculation_id: int,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    calculation = get_calculation_or_404(db, calculation_id)
-    try:
-        pdf_path = generate_pdf_for_calculation(db, calculation)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    db.commit()
-    return serialize_pdf_result(calculation.period, calculation, pdf_path)
-
-
-@app.get("/api/calculations/{calculation_id}/pdf/download", dependencies=[Depends(require_legacy_api_access)])
-def download_calculation_pdf_api(calculation_id: int, db: Session = Depends(get_db)):
-    calculation = get_calculation_or_404(db, calculation_id)
-    return calculation_pdf_response(calculation)
-
-
 def create_period(
     db: Session,
     year: int,
@@ -1378,6 +1203,8 @@ def create_period(
     user: User | None = None,
     department_id: int | None = None,
 ) -> Period:
+    if not 1 <= year <= 9999:
+        raise HTTPException(status_code=400, detail="Год должен быть от 1 до 9999")
     if not 1 <= month <= 12:
         raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
 
@@ -1416,18 +1243,6 @@ def get_period_or_404(db: Session, period_id: int) -> Period:
     return period
 
 
-def get_period_by_date_or_404(db: Session, year: int, month: int) -> Period:
-    period = (
-        db.query(Period)
-        .filter(Period.year == year, Period.month == month)
-        .order_by(Period.id)
-        .first()
-    )
-    if period is None:
-        raise HTTPException(status_code=404, detail="Период не найден")
-    return period
-
-
 def get_department_by_code_or_404(db: Session, department_code: str) -> Department:
     department = (
         db.query(Department)
@@ -1459,8 +1274,22 @@ def get_period_by_department_date_or_404(
     return period
 
 
+def department_url_name(department: Department) -> str:
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in department.name).strip("_") or "Отдел"
+
+
+def get_web_period(request: Request, db: Session, year: int, month: int):
+    name = request.path_params.get("department_name")
+    matches = [department for department in db.query(Department).all() if department_url_name(department) == name]
+    if not matches:
+        raise HTTPException(status_code=404, detail="Отдел не найден")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="Названия отделов совпадают. Укажите разные названия в админке.")
+    return get_period_by_department_date_or_404(db, matches[0], year, month)
+
+
 def period_url(period: Period) -> str:
-    return f"/periods/{period.year}/{period.month:02d}"
+    return f"/{quote(department_url_name(period.department), safe='')}/{period.year}/{period.month:02d}"
 
 
 def get_calculation_or_404(db: Session, calculation_id: int) -> Calculation:
@@ -1588,10 +1417,8 @@ def serialize_pdf_result(
     pdf_path: Path,
     department_code: str | None = None,
 ) -> dict[str, object]:
-    if department_code:
-        api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
-    else:
-        api_base = f"/api/periods/{period.year}/{period.month}"
+    department_code = department_code or period.department.code
+    api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
     return {
         "calculation_id": calculation.id,
         "employee": calculation.employee.full_name,
@@ -1606,10 +1433,8 @@ def serialize_calculation_summary(
     calculation: Calculation,
     department_code: str | None = None,
 ) -> dict[str, object]:
-    if department_code:
-        api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
-    else:
-        api_base = f"/api/periods/{period.year}/{period.month}"
+    department_code = department_code or period.department.code
+    api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
     result = {
         "id": calculation.id,
         "employee": calculation.employee.full_name,
@@ -1630,10 +1455,8 @@ def serialize_calculation(
 ) -> dict[str, object]:
     snapshot = load_snapshot(calculation) if calculation.snapshot_json else {}
     period = calculation.period
-    if department_code:
-        api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
-    else:
-        api_base = f"/api/periods/{period.year}/{period.month}"
+    department_code = department_code or period.department.code
+    api_base = f"/api/departments/{department_code}/periods/{period.year}/{period.month}"
     return {
         "id": calculation.id,
         "period_id": calculation.period_id,
@@ -1726,21 +1549,27 @@ def with_saved_notice(url: str) -> str:
     ))
 
 
-def remove_period_calculations(db: Session, period: Period) -> None:
+def remove_calculation(db: Session, calculation: Calculation) -> None:
+    if calculation.pdf_path:
+        pdf_path = resolve_service_data_path(calculation.pdf_path)
+        try:
+            if pdf_path.is_file():
+                pdf_path.unlink()
+                _remove_empty_parents(pdf_path.parent)
+        except OSError:
+            pass
+    db.delete(calculation)
+
+
+def remove_period_calculations(db: Session, period: Period, preserve_manual: bool = False) -> None:
     for calculation in list(period.calculations):
-        if calculation.pdf_path:
-            pdf_path = resolve_service_data_path(calculation.pdf_path)
-            try:
-                if pdf_path.is_file():
-                    pdf_path.unlink()
-                    _remove_empty_parents(pdf_path.parent)
-            except OSError:
-                pass
-        db.delete(calculation)
+        if preserve_manual and calculation.snapshot_json and load_snapshot(calculation).get("report_type") == "manual":
+            continue
+        remove_calculation(db, calculation)
     db.flush()
 
     output_dir = period_storage_dir(GENERATED_DIR, period)
-    if output_dir.exists():
+    if not preserve_manual and output_dir.exists():
         rmtree(output_dir)
 
     completeness = report_completeness(period)

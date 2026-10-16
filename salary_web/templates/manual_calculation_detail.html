@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ручной расчет: {{ calculation.employee.full_name }}</h1>
+<p>Период: {{ months[calculation.period.month] | capitalize }} {{ calculation.period.year }}</p>
+<div class="top-actions">
+  <form method="post" action="/calculations/{{ calculation.id }}/pdf" class="inline-form">
+    <input type="hidden" name="return_to" value="/calculations/{{ calculation.id }}">
+    <button type="submit">Создать расчет в PDF</button>
+  </form>
+  {% if calculation.pdf_path %}<a class="secondary-button" href="/calculations/{{ calculation.id }}/pdf/download">Скачать PDF</a>{% endif %}
+  <a class="secondary-button" href="{{ period_url(calculation.period) }}#calculations">Вернуться к списку расчетов</a>
+</div>
+<div class="card" id="manual-entries">
+  <h2>Выплаты</h2>
+  <table>
+    <thead><tr><th>Название выплаты</th><th>Сумма</th><th>Комментарий</th><th>Действия</th></tr></thead>
+    <tbody>
+    {% for payment in calculation.additional_payments %}
+      <tr>
+        <td><input form="payment-{{ payment.id }}" name="title" value="{{ payment.title }}" required aria-label="Название выплаты"></td>
+        <td><input form="payment-{{ payment.id }}" name="amount" type="number" step="0.01" min="-1000000000000" max="1000000000000" value="{{ payment.amount }}" required aria-label="Сумма"></td>
+        <td><textarea form="payment-{{ payment.id }}" name="comment" rows="3" aria-label="Комментарий">{{ payment.comment or '' }}</textarea></td>
+        <td>
+          <form id="payment-{{ payment.id }}" method="post" action="/calculations/{{ calculation.id }}/additional-payments/{{ payment.id }}/update"><button type="submit">Сохранить</button></form>
+          <form method="post" action="/calculations/{{ calculation.id }}/additional-payments/{{ payment.id }}/delete"><button type="submit">Удалить</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th>Итого к выплате</th><th>{{ '{:,.2f}'.format(snapshot.salary_total).replace(',', ' ') }}</th><td colspan="2"></td></tr></tfoot>
+  </table>
+</div>
+<div class="card" id="additional-payment-form">
+  <h2>Добавить выплату</h2>
+  <form method="post" action="/calculations/{{ calculation.id }}/additional-payments">
+    <label>Название выплаты <input name="title" required></label>
+    <label>Сумма <input name="amount" type="number" step="0.01" min="-1000000000000" max="1000000000000" required></label>
+    <label>Комментарий <textarea name="comment" rows="3"></textarea></label>
+    <button type="submit">Добавить</button>
+  </form>
+</div>
+{% endblock %}

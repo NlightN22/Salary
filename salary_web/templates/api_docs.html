@@ -26,11 +26,8 @@
       Ключ создаётся в админке и привязывается к разрешённым направлениям.
     </p>
     <pre><code>X-API-Key: sk_salary_...</code></pre>
-    <p>Если API-ключ не передан и веб-сессии нет, сервер вернёт:</p>
-    <pre><code>{
-  "detail": "Требуется авторизация"
-}</code></pre>
-    <p>Если API-ключ передан, но он неверный, выключен или не найден, сервер вернёт:</p>
+    <p>Вход в браузере не заменяет API-ключ. Если ключ отсутствует, неверный или выключен,
+      сервер вернёт HTTP <code>401</code>:</p>
     <pre><code>{
   "detail": "Требуется API-ключ"
 }</code></pre>
@@ -45,8 +42,33 @@
     <p>
       Для внешних интеграций используй адреса
       <code>/api/departments/{department_code}/...</code> и заголовок <code>X-API-Key</code>.
-      Старые адреса <code>/api/periods/...</code> оставлены для веб-сессии и совместимости.
+      API требует указания подразделения и действующего API-ключа.
     </p>
+  </div>
+
+  <div class="card">
+    <h2>Первый запуск: куда вставлять команды</h2>
+    <ol>
+      <li>Попросите администратора открыть «Админка», создать API-ключ и дать ему доступ к нужному подразделению.
+        Скопируйте ключ целиком. <code>sk_salary_...</code> в примерах — заглушка, а не рабочий ключ.</li>
+      <li>Уточните в админке <strong>код</strong> подразделения, например <code>b2b</code>.
+        В API используется код, а не название «B2B-направление» из адреса веб-страницы.</li>
+      <li>На macOS нажмите Cmd + Пробел, введите «Терминал» и откройте приложение.
+        На Linux откройте терминал. Команды ниже предназначены для этих систем.
+        В Windows откройте PowerShell, замените <code>curl</code> на <code>curl.exe</code>
+        и объедините строки команды в одну, убрав символы <code>\</code> в концах строк.</li>
+      <li>Нажмите «Копировать» у нужного примера. Перед выполнением замените ключ,
+        <code>b2b</code>, год и месяц на свои значения. <code>2026/6</code> означает июнь 2026 года.</li>
+      <li>Вставьте команду в терминал и нажмите Enter. Выполняйте команды по одной:
+        сначала проверьте ответ, затем переходите к следующей.</li>
+    </ol>
+    <p><code>GET</code> получает данные; <code>POST</code> запускает действие и может менять данные.
+      Не выполняйте примеры загрузки и пересчёта на рабочем периоде только ради проверки связи:
+      для этого достаточно <code>/api/health</code>.</p>
+    <p>Ключ — секрет, как пароль. Не публикуйте его, не отправляйте в переписку и не включайте в снимки экрана.
+      Команды с ключом могут остаться в истории терминала. При утечке отключите ключ в админке и создайте новый.</p>
+    <p>Если интеграция работает на другом компьютере, <code>127.0.0.1</code> указывает на тот компьютер,
+      а не на сервер зарплаты. Используйте выданный администратором сетевой адрес сервера.</p>
   </div>
 
   <div class="card">
@@ -67,8 +89,9 @@
       <li>Скачать файл: <code>GET /api/departments/b2b/periods/2026/6/calculations/{calculation_id}/pdf/download</code>.</li>
     </ol>
     <p class="muted">
-      Если отчёт за период загружен повторно, старые расчёты и PDF этого периода
-      удаляются. Это защита от ситуации, когда исходники уже новые, а расчёт ещё старый.
+      <strong>Важно:</strong> загрузка или замена отчёта удаляет автоматические расчёты этого периода,
+      их ручные корректировки, дополнительные выплаты и связанные PDF.
+      Полностью ручные расчётки сохраняются. Сначала загрузите все исходники, затем считайте зарплату.
     </p>
   </div>
 
@@ -235,90 +258,6 @@
       </tr>
     </table>
 
-    <h3>Старые адреса для веб-сессии и совместимости</h3>
-    <p class="muted">
-      Эти методы оставлены, чтобы не ломать старый веб/API-сценарий. Для 1С, CRM и других
-      внешних систем их лучше не использовать: в адресе нет <code>department_code</code>,
-      а авторизация идёт через веб-сессию.
-    </p>
-    <table class="compact-table api-table">
-      <tr>
-        <th>Метод</th>
-        <th>Адрес</th>
-        <th>Что делает</th>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}</code></td>
-        <td>Создаёт период в старом формате без явного направления.</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/api/periods/{year}/{month}</code></td>
-        <td>Возвращает период, загруженные отчёты, расчёты и текущий статус.</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/api/periods/{year}/{month}/validation</code></td>
-        <td>Показывает, какие отчёты загружены, чего не хватает и где есть ошибки.</td>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}/validate</code></td>
-        <td>Запускает проверку загруженных отчётов.</td>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}/reports/{report_type}</code></td>
-        <td>Загружает или заменяет один исходный отчёт. При замене старые расчёты периода удаляются.</td>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}/calculate</code></td>
-        <td>Создаёт JSON-расчёты по загруженным отчётам, но не создаёт PDF.</td>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}/pdf</code></td>
-        <td>Создаёт расчёты, формирует PDF и возвращает ссылки для скачивания.</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/api/periods/{year}/{month}/calculations</code></td>
-        <td>Возвращает список расчётов за период.</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/api/periods/{year}/{month}/calculations/{calculation_id}</code></td>
-        <td>Возвращает данные конкретного расчёта за указанный период.</td>
-      </tr>
-      <tr>
-        <td><code>POST</code></td>
-        <td><code>/api/periods/{year}/{month}/calculations/{calculation_id}/pdf</code></td>
-        <td>Формирует PDF по одному расчёту за указанный период.</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/api/periods/{year}/{month}/calculations/{calculation_id}/pdf/download</code></td>
-        <td>Скачивает готовый PDF-файл за указанный период.</td>
-      </tr>
-    </table>
-    <p class="muted">
-      Старые ID-адреса также работают через веб-сессию: <code>/api/periods/{period_id}</code>,
-      <code>/api/periods/{period_id}/calculate</code>,
-      <code>/api/periods/{period_id}/pdf</code>,
-      <code>/api/calculations/{calculation_id}</code>.
-      Для внешней интеграции используй адреса с <code>department_code</code>.
-    </p>
-    <p class="muted">
-      <code>calculation_id</code> — это ID конкретного расчёта сотрудника.
-      Для внешнего API его нужно брать из ответа
-      <code>GET /api/departments/{department_code}/periods/{year}/{month}/calculations</code>.
-    </p>
-    <p class="muted">
-      Пример: <code>/api/departments/b2b/periods/2026/6/calculations/1</code> означает:
-      взять расчёт <code>1</code> именно за июнь 2026 года по направлению B2B.
-    </p>
   </div>
 
   <div class="card">
@@ -346,18 +285,23 @@
       </tr>
       <tr>
         <td><code>401</code></td>
-        <td>Пользователь не вошёл в систему.</td>
-        <td>Войти в веб-интерфейс или добавить авторизацию для внешней интеграции.</td>
+        <td>API-ключ отсутствует, неверный или выключен.</td>
+        <td>Передать действующий ключ в <code>X-API-Key</code>. Вход в браузере не поможет.</td>
       </tr>
       <tr>
         <td><code>403</code></td>
-        <td>У пользователя нет прав на направление или период.</td>
-        <td>Проверить права в админке.</td>
+        <td>У API-ключа нет доступа к указанному подразделению.</td>
+        <td>Попросить администратора разрешить это подразделение для ключа.</td>
       </tr>
       <tr>
         <td><code>404</code></td>
         <td>Период, расчёт или PDF не найден.</td>
         <td>Проверить год, месяц и <code>calculation_id</code>.</td>
+      </tr>
+      <tr>
+        <td><code>422</code></td>
+        <td>В запросе пропущен обязательный параметр или неверен его формат.</td>
+        <td>Проверить поле <code>detail</code>. При загрузке файл должен передаваться в поле <code>file</code>, год и месяц — числами.</td>
       </tr>
     </table>
     <p class="muted">
@@ -450,8 +394,19 @@
   -F file=@profit.xlsx</code></pre>
       <p class="muted">
         Вместо <code>profit</code> нужно подставить код отчёта из таблицы «Типы отчётов».
-        Если загрузить отчёт повторно, он заменит старый, а расчёты этого периода будут удалены.
+        Загрузка или замена отчёта удаляет автоматические расчёты периода вместе с их ручными
+        корректировками, дополнительными выплатами и PDF. Полностью ручные расчётки сохраняются.
       </p>
+      <p>В <code>-F "file=@..."</code> после <code>@</code> указывается путь к файлу на компьютере,
+        где запущена команда. Если написано только <code>profit.xlsx</code>, файл должен лежать в текущей папке терминала.
+        Для пути с пробелами обязательно оставьте кавычки, как в примере ниже.</p>
+      <div class="api-call-header"><h4>Пример с полным путём на macOS</h4>
+        <button type="button" class="copy-button" data-copy-target="copy-upload-full-path">Копировать</button></div>
+      <pre><code id="copy-upload-full-path">curl -X POST {{ api_base_url }}/api/departments/b2b/periods/2026/6/reports/profit \
+  -H "X-API-Key: sk_salary_..." \
+  -F "file=@/Users/ВАШЕ_ИМЯ/Documents/Отчеты/profit.xlsx"</code></pre>
+      <p>Замените весь путь после <code>@</code> на реальный путь к вашему файлу. Повторите загрузку для каждого
+        обязательного типа из таблицы «Типы отчётов». Один запрос загружает один файл.</p>
       <p class="muted">Пример ответа:</p>
       <pre><code>{
   "id": 1,
@@ -470,6 +425,10 @@
       </div>
       <pre><code id="copy-validate">curl -X POST {{ api_base_url }}/api/departments/b2b/periods/2026/6/validate \
   -H "X-API-Key: sk_salary_..."</code></pre>
+      <p><strong>Проверьте содержимое ответа, а не только код 200.</strong> Загрузка файла ещё не означает,
+        что он читается правильно. Перед расчётом должно быть <code>validated: true</code>.
+        Если это не так, посмотрите <code>missing</code> (чего не хватает) и <code>errors</code> (ошибки файлов),
+        исправьте файлы, загрузите их и повторите проверку.</p>
       <p class="muted">
         Проверка нужна, чтобы понять, все ли отчёты загружены и читаются ли они.
         Если отчёта не хватает или файл не читается, это будет видно в ответе.
@@ -489,6 +448,9 @@
       </div>
       <pre><code id="copy-calculate">curl -X POST {{ api_base_url }}/api/departments/b2b/periods/2026/6/calculate \
   -H "X-API-Key: sk_salary_..."</code></pre>
+      <p class="api-note"><strong>Пересчёт удаляет ручные корректировки и дополнительные выплаты у заново
+        рассчитанных сотрудников.</strong> Их PDF потребуется создать заново. Полностью ручные расчётки
+        и прежние расчёты сотрудников, которых нет в новых исходниках, сохраняются.</p>
       <p class="muted">
         Этот метод нужен, если сначала требуется получить расчёты в базе, проверить их,
         а PDF сформировать позже.
@@ -511,6 +473,10 @@
         Этот метод сразу создаёт расчёты и PDF. Если расчёты уже были, они будут пересозданы
         на основании текущих загруженных отчётов.
       </p>
+      <p class="api-note"><strong>Это пересчёт, а не просто скачивание:</strong> ручные корректировки и дополнительные
+        выплаты у заново рассчитанных сотрудников удаляются. Полностью ручные расчётки сохраняются.
+        Чтобы сформировать PDF существующего расчёта с сохранением правок, используйте метод № 11,
+        а для скачивания уже готового файла — метод № 12.</p>
       <p class="muted">Ответ будет в едином формате:</p>
       <pre><code>{
   "period_id": 1,
@@ -606,13 +572,25 @@
         <h3>12. Скачать PDF расчёта</h3>
         <button type="button" class="copy-button" data-copy-target="copy-download-pdf">Копировать</button>
       </div>
-      <pre><code id="copy-download-pdf">curl -X GET {{ api_base_url }}/api/departments/b2b/periods/2026/6/calculations/1/pdf/download \
+      <pre><code id="copy-download-pdf">curl --fail --show-error -X GET {{ api_base_url }}/api/departments/b2b/periods/2026/6/calculations/1/pdf/download \
   -H "X-API-Key: sk_salary_..." \
   --output calculation.pdf</code></pre>
       <p class="muted">
         Файл сохранится туда, откуда выполняется команда, под именем <code>calculation.pdf</code>.
         Имя файла можно заменить на любое удобное.
       </p>
+      <p>Число <code>1</code> замените на <code>calculation_id</code> нужного сотрудника из ответа сервера.
+        Если сервер вернул <code>api_download_url</code>, добавьте перед ним адрес сервера
+        <code>{{ api_base_url }}</code>. API-ключ нужен и для скачивания.</p>
+      <p>На macOS/Linux команда <code>pwd</code> покажет текущую папку, а <code>ls -l calculation.pdf</code>
+        проверит наличие файла. На macOS откройте её командой <code>open .</code>.
+        Можно указать полный путь после <code>--output</code>, например
+        <code>--output "$HOME/Downloads/calculation.pdf"</code>; папка должна существовать.
+        В PowerShell используйте <code>Get-Location</code> и <code>Get-Item calculation.pdf</code>.</p>
+      <p><code>--fail</code> не позволяет записать ответ с HTTP-ошибкой вместо PDF.
+        Если скачивание завершилось ошибкой, не считайте оставшийся на диске старый PDF новым:
+        проверьте ключ, ID и наличие сформированного файла. Текст ошибки можно получить,
+        повторив запрос без <code>--fail</code> и без <code>--output</code>.</p>
     </div>
   </div>
 

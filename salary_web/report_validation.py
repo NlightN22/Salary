@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from parsers.excel_reader import read_excel
 from services.calculation_context import load_context_from_files
 from salary_web.config import REQUIRED_REPORT_TYPES, resolve_service_data_path
-from salary_web.models import Period, PeriodStatus, ReportStatus, UploadedReport
+from salary_web.models import Period, PeriodStatus, ReportStatus
 from salary_web.report_storage import report_completeness, update_period_status
 
 

@@ -79,11 +79,12 @@ FIELD_TITLES = {
 }
 
 
-def build_snapshot_sections(snapshot: dict) -> list[dict[str, object]]:
+def build_snapshot_sections(snapshot: dict, adjustments=None) -> list[dict[str, object]]:
     if not snapshot:
         return []
 
     sections = []
+    adjustments = snapshot.get("manual_adjustments", []) if adjustments is None else adjustments
     for key, value in snapshot.items():
         if key in GENERAL_FIELDS or key in HIDDEN_SECTIONS:
             continue
@@ -93,6 +94,7 @@ def build_snapshot_sections(snapshot: dict) -> list[dict[str, object]]:
             "title": SECTION_TITLES.get(key, key),
             "rows": _flatten_value(visible_value),
             "can_adjust": key not in READONLY_SECTIONS,
+            "corrections": [item for item in adjustments if item.get("section_code") == key],
         }
         if key == "lukoil" and isinstance(value, dict) and not value.get("calculation_enabled", True):
             section["hide_field_table"] = True
@@ -104,14 +106,6 @@ def build_snapshot_sections(snapshot: dict) -> list[dict[str, object]]:
             section["key_client_items"] = _key_client_items(value)
         sections.append(section)
     return sections
-
-
-def build_summary_rows(snapshot: dict) -> list[dict[str, str]]:
-    return [
-        {"field": _field_title(field), "value": _format_value(snapshot.get(field), field)}
-        for field in ("report_type", "total_bonus", "salary_total")
-        if field in snapshot
-    ]
 
 
 def build_final_summary_rows(snapshot: dict) -> list[dict[str, str]]:

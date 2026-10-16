@@ -28,7 +28,7 @@ def make_calculation(db, report=None):
 
 
 def patch_access(monkeypatch, period, calculation):
-    monkeypatch.setattr(web, "get_period_by_date_or_404", lambda *_: period)
+    monkeypatch.setattr(web, "get_web_period", lambda *_: period)
     monkeypatch.setattr(web, "get_calculation_or_404", lambda *_: calculation)
     monkeypatch.setattr(web, "ensure_period_access", lambda *_: None)
 
@@ -45,7 +45,7 @@ def test_public_and_authenticated_middleware_paths():
 def test_direct_form_success_and_upload_branches(db, monkeypatch):
     period, calculation = make_calculation(db)
     patch_access(monkeypatch, period, calculation)
-    request = Mock()
+    request = Mock(path_params={})
     monkeypatch.setattr(web, "save_uploaded_reports_batch", Mock(side_effect=ValueError("bad")))
     with pytest.raises(HTTPException):
         web.upload_report_form(2040, 4, request, [], db)
@@ -97,37 +97,6 @@ def test_key_client_adjustment_all_paths(db, monkeypatch):
     assert web.update_calculation_adjustment(calculation.id, legacy.id, request, 50, "C", db).status_code == 303
 
 
-def test_api_wrapper_success_and_error_paths(db, monkeypatch, tmp_path):
-    period, calculation = make_calculation(db)
-    monkeypatch.setattr(web, "get_period_by_date_or_404", lambda *_: period)
-    monkeypatch.setattr(web, "calculate_period", Mock(return_value=[]))
-    assert web.calculate_period_response(db, period)["calculations_created"] == 0
-    assert web.create_period_by_date_api(2041, 5, db)["year"] == 2041
-    assert web.validate_period_by_date_api(2040, 4, db)
-    monkeypatch.setattr(web, "validate_period_reports", Mock(return_value={"valid": True}))
-    assert web.validate_period_reports_by_date_api(2040, 4, db) == {"valid": True}
-    monkeypatch.setattr(web, "upload_report_to_period_api", Mock(return_value={"ok": 1}))
-    assert web.upload_report_by_date_api(2040, 4, "profit", Mock(), db) == {"ok": 1}
-    assert web.calculate_period_by_date_api(2040, 4, db)["calculations_created"] == 0
-
-    monkeypatch.setattr(web, "generate_period_pdfs_response", Mock(return_value={"pdfs": []}))
-    assert web.generate_period_pdfs_by_date_api(2040, 4, db) == {"pdfs": []}
-
-    monkeypatch.setattr(web, "generate_pdf_for_calculation", Mock(side_effect=ValueError("bad")))
-    monkeypatch.setattr(web, "get_period_calculation_or_404", lambda *_: calculation)
-    with pytest.raises(HTTPException):
-        web.generate_period_calculation_pdf_by_date_api(2040, 4, calculation.id, db)
-    with pytest.raises(HTTPException):
-        web.generate_calculation_pdf_api(calculation.id, db)
-
-    calculation.pdf_path = "does-not-exist.pdf"
-    with pytest.raises(HTTPException):
-        web.calculation_pdf_response(calculation)
-
-    pdf = tmp_path / "ok.pdf"; pdf.write_bytes(b"pdf")
-    monkeypatch.setattr(web, "generate_pdf_for_calculation", lambda *_: pdf)
-    result = web.generate_period_calculation_pdf_by_date_api(2040, 4, calculation.id, db)
-    assert result["calculation_id"] == calculation.id
 
 
 def test_generate_period_pdf_response_branches(db, monkeypatch, tmp_path):
@@ -188,7 +157,7 @@ def test_upload_api_complete_validation_branch(db, monkeypatch):
         id=1, report_type="profit", original_filename="profit.xlsx", file_hash="h"
     )
     monkeypatch.setattr(web, "save_uploaded_report", lambda *_: report)
-    monkeypatch.setattr(web, "remove_period_calculations", lambda *_: None)
+    monkeypatch.setattr(web, "remove_period_calculations", lambda *_, **kwargs: None)
     monkeypatch.setattr(web, "report_completeness", lambda *_: {"complete": True})
     validate = Mock(); monkeypatch.setattr(web, "validate_period_reports", validate)
     assert web.upload_report_to_period_api(db, period, "profit", Mock())["id"] == 1

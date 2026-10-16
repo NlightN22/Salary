@@ -100,7 +100,7 @@
         <td>{{ period.department.name if period.department else "" }}</td>
         <td>{{ period.status | status_label }}</td>
         <td>
-          <a href="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}">Открыть</a>
+          <a href="{{ period_url(period) }}">Открыть</a>
           {% if current_user and current_user.is_admin %}
             <form method="post" action="/periods/{{ period.id }}/delete" class="inline-form" onsubmit="return confirm('Удалить период {{ months[period.month] }} {{ period.year }}{% if period.department %} / {{ period.department.name }}{% endif %}? Будут удалены отчёты, расчёты и PDF.');">
               <button type="submit">Удалить</button>

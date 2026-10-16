@@ -51,7 +51,7 @@ def test_complete_web_admin_and_manual_entry_workflow():
 
         create_key = client.post("/admin/api-keys", data={"name": f"key-{marker}", "department_ids": str(department_id)})
         assert create_key.status_code == 200
-        db = SessionLocal(); api_key = db.query(ApiKey).filter_by(name=f"key-{marker}").one(); api_key_id = api_key.id; db.close()
+        db = SessionLocal(); api_key = db.query(ApiKey).filter_by(name=f"key-{marker}").one(); api_key_id = api_key.id; client.headers["X-API-Key"] = api_key.key_secret; db.close()
         assert client.post(f"/admin/api-keys/{api_key_id}/rights", data={
             "name": "updated", "department_ids": str(department_id), "is_active": "1",
         }).status_code == 303
@@ -60,15 +60,16 @@ def test_complete_web_admin_and_manual_entry_workflow():
         create_period = client.post("/periods", data={"year": year, "month": 1, "department_id": department_id})
         assert create_period.status_code == 303
         db = SessionLocal(); period = db.query(Period).filter_by(year=year, month=1, department_id=department_id).one(); period_id = period.id; db.close()
-        assert client.get(f"/periods/{year}/1").status_code == 200
-        assert client.get(f"/periods/{period_id}").status_code == 303
-        assert client.post(f"/periods/{year}/1/validate").status_code == 303
-        assert client.post(f"/periods/{year}/1/calculate").status_code == 400
-        assert client.post(f"/periods/{year}/1/pdf").status_code == 400
-        assert client.post(f"/periods/{year}/1/calculations/delete").status_code == 303
+        web_base = create_period.headers["location"]
+        assert client.get(web_base).status_code == 200
+        assert client.get(f"/periods/{period_id}").status_code == 404
+        assert client.post(f"{web_base}/validate").status_code == 303
+        assert client.post(f"{web_base}/calculate").status_code == 400
+        assert client.post(f"{web_base}/pdf").status_code == 400
+        assert client.post(f"{web_base}/calculations/delete").status_code == 303
 
         upload = client.post(
-            f"/periods/{year}/1/reports",
+            f"{web_base}/reports",
             files=[("files", ("unknown.xlsx", b"not excel", "application/octet-stream"))],
         )
         assert upload.status_code == 303
@@ -104,12 +105,12 @@ def test_complete_web_admin_and_manual_entry_workflow():
         assert client.post(f"/calculations/{calculation_id}/pdf").status_code == 303
         assert client.get(f"/calculations/{calculation_id}/pdf/download").status_code == 200
 
-        assert client.get(f"/api/periods/{year}/1").status_code == 200
-        assert client.get(f"/api/periods/{year}/1/calculations").status_code == 200
-        assert client.get(f"/api/periods/{year}/1/calculations/{calculation_id}").status_code == 200
-        assert client.get(f"/api/calculations/{calculation_id}").status_code == 200
-        assert client.post(f"/api/calculations/{calculation_id}/pdf").status_code == 200
-        assert client.get(f"/api/calculations/{calculation_id}/pdf/download").status_code == 200
+        assert client.get(f"/api/departments/{code}/periods/{year}/1").status_code == 200
+        assert client.get(f"/api/departments/{code}/periods/{year}/1/calculations").status_code == 200
+        assert client.get(f"/api/departments/{code}/periods/{year}/1/calculations/{calculation_id}").status_code == 200
+        assert client.get(f"/api/departments/{code}/periods/{year}/1/calculations/{calculation_id}").status_code == 200
+        assert client.post(f"/api/departments/{code}/periods/{year}/1/calculations/{calculation_id}/pdf").status_code == 200
+        assert client.get(f"/api/departments/{code}/periods/{year}/1/calculations/{calculation_id}/pdf/download").status_code == 200
 
         assert client.post(f"/calculations/{calculation_id}/adjustments/{adjustment_id}/delete").status_code == 303
         assert client.post(f"/calculations/{calculation_id}/additional-payments/{payment_id}/delete").status_code == 303
@@ -119,7 +120,7 @@ def test_complete_web_admin_and_manual_entry_workflow():
         assert client.post("/logout").status_code == 303
 
 
-def test_web_and_legacy_api_error_branches():
+def test_web_and_department_api_error_branches():
     marker = uuid.uuid4().hex[:8]
     year = 2600 + int(marker[:2], 16)
     with TestClient(app, follow_redirects=False) as client:
@@ -134,24 +135,27 @@ def test_web_and_legacy_api_error_branches():
         assert client.post("/admin/users/999999/delete").status_code == 404
         assert client.post("/admin/api-keys/999999/delete").status_code == 404
 
-        created = client.post("/api/periods", data={"year": year, "month": 3})
+        client.post("/admin/api-keys", data={"name": f"errors-{marker}", "department_ids": str(department_id)})
+        db = SessionLocal(); key = db.query(ApiKey).filter_by(name=f"errors-{marker}").one()
+        client.headers["X-API-Key"] = key.key_secret; db.close()
+        created = client.post(f"/api/departments/b2b/periods/{year}/3")
         assert created.status_code == 200
         period_id = created.json()["id"]
-        assert client.get(f"/api/periods/{period_id}").status_code == 200
-        assert client.get(f"/api/periods/{period_id}/validation").status_code == 200
-        assert client.post(f"/api/periods/{period_id}/validate").status_code == 200
-        assert client.post(f"/api/periods/{period_id}/calculate").status_code == 400
-        assert client.post(f"/api/periods/{period_id}/pdf").status_code == 400
+        assert client.get(f"/api/departments/b2b/periods/{year}/3").status_code == 200
+        assert client.get(f"/api/departments/b2b/periods/{year}/3/validation").status_code == 200
+        assert client.post(f"/api/departments/b2b/periods/{year}/3/validate").status_code == 200
+        assert client.post(f"/api/departments/b2b/periods/{year}/3/calculate").status_code == 400
+        assert client.post(f"/api/departments/b2b/periods/{year}/3/pdf").status_code == 400
         assert client.get("/api/periods/999999").status_code == 404
         assert client.get("/api/periods/2999/12").status_code == 404
 
         invalid_type = client.post(
-            f"/api/periods/{period_id}/reports/not-a-report",
+            f"/api/departments/b2b/periods/{year}/3/reports/not-a-report",
             files={"file": ("bad.xlsx", b"bad")},
         )
         assert invalid_type.status_code == 400
         assert client.post(
-            f"/api/periods/{period_id}/reports/profit",
+            f"/api/departments/b2b/periods/{year}/3/reports/profit",
             files={"file": ("profit.xlsx", b"broken excel")},
         ).status_code == 200
 
@@ -175,8 +179,8 @@ def test_web_and_legacy_api_error_branches():
         assert client.post(f"/calculations/{calculation_id}/additional-payments/999999/delete").status_code == 404
         assert client.post(f"/calculations/{calculation_id}/adjustments/999999/update", data={"amount": 1}).status_code == 404
         assert client.post(f"/calculations/{calculation_id}/adjustments/999999/delete").status_code == 404
-        assert client.get(f"/api/periods/{year}/3/calculations/{unknown_id}").status_code == 200
-        assert client.get(f"/api/periods/{year}/3/calculations/999999").status_code == 404
-        assert client.post(f"/api/periods/{year}/3/calculations/{unknown_id}/pdf").status_code == 400
-        assert client.get(f"/api/periods/{year}/3/calculations/{no_pdf_id}/pdf/download").status_code == 404
+        assert client.get(f"/api/departments/b2b/periods/{year}/3/calculations/{unknown_id}").status_code == 200
+        assert client.get(f"/api/departments/b2b/periods/{year}/3/calculations/999999").status_code == 404
+        assert client.post(f"/api/departments/b2b/periods/{year}/3/calculations/{unknown_id}/pdf").status_code == 400
+        assert client.get(f"/api/departments/b2b/periods/{year}/3/calculations/{no_pdf_id}/pdf/download").status_code == 404
         assert client.post(f"/periods/{period_id}/delete").status_code == 303

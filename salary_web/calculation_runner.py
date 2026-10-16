@@ -18,7 +18,7 @@ from salary_web.models import (
 from salary_web.report_storage import report_completeness
 
 
-def calculate_period(db: Session, period: Period) -> list[Calculation]:
+def calculate_period(db: Session, period: Period, employee_name: str | None = None) -> list[Calculation]:
     completeness = report_completeness(period)
     if not completeness["complete"]:
         missing = ", ".join(completeness["missing"])
@@ -31,6 +31,10 @@ def calculate_period(db: Session, period: Period) -> list[Calculation]:
 
     manager_reports = calculate_managers(context)
     reports = [*manager_reports, calculate_chief(context, manager_reports)]
+    if employee_name is not None:
+        reports = [report for report in reports if report["employee"] == employee_name]
+        if not reports:
+            raise ValueError("Сотрудник отсутствует в исходных отчетах. Прежний расчет сохранен.")
 
     calculations = []
     for report in reports:
@@ -59,6 +63,9 @@ def calculate_period(db: Session, period: Period) -> list[Calculation]:
                 employee_id=employee.id,
             )
             db.add(calculation)
+        elif calculation.snapshot_json and json.loads(calculation.snapshot_json).get("report_type") == "manual":
+            calculations.append(calculation)
+            continue
 
         calculation.status = "calculated"
         calculation.snapshot_json = snapshot_json

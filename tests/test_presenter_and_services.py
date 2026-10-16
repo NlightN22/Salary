@@ -6,7 +6,6 @@ import pytest
 from salary_web.snapshot_presenter import (
     build_final_summary_rows,
     build_snapshot_sections,
-    build_summary_rows,
 )
 from salary_web.ui_helpers import report_type_label, status_label
 from services.file_finder import find_files
@@ -25,7 +24,6 @@ def test_presenter_formats_complete_manager_and_chief_snapshots():
     debt = next(section for section in sections if section["code"] == "debt")
     assert debt["debt_large_items"][0]["contractor"] == "Клиент <А>"
     assert any(row["style"] == "salary" for row in build_final_summary_rows(manager))
-    assert build_summary_rows(manager)[0]["value"] == "Менеджер"
 
     chief = chief_report()
     sections = build_snapshot_sections(chief)
@@ -50,7 +48,6 @@ def test_presenter_handles_empty_unknown_and_fallback_values():
     }
     sections = build_snapshot_sections(snapshot)
     assert sections
-    assert build_summary_rows(snapshot)[0]["value"] == "unknown"
     assert status_label("mystery") == "mystery"
     assert report_type_label("mystery") == "mystery"
 

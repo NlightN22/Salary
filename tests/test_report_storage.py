@@ -5,6 +5,7 @@ from fastapi import UploadFile
 
 import salary_web.report_storage as storage
 from salary_web.models import Department, Period, ReportStatus, UploadedReport
+from salary_web.config import resolve_service_data_path
 
 
 def make_period(db, code="b2b"):
@@ -49,7 +50,9 @@ def test_new_upload_path_contains_department_and_period(db, tmp_path, monkeypatc
     period = make_period(db, "sales-east")
     upload = UploadFile(filename="profit.xlsx", file=BytesIO(b"content"))
     report = storage.save_uploaded_report(db, period, "profit", upload)
-    assert (tmp_path / "sales-east" / "2026" / "01" / "profit.xlsx").read_bytes() == b"content"
+    path = resolve_service_data_path(report.stored_path)
+    assert path.parent == tmp_path.parent / "periods" / f"SALES-EAST_{period.department_id}" / "2026" / "01_Январь" / tmp_path.name
+    assert path.read_bytes() == b"content"
     assert report.file_hash
 
 
@@ -57,9 +60,9 @@ def test_reupload_replaces_single_report_record(db, tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "UPLOADS_DIR", tmp_path)
     period = make_period(db)
     storage.save_uploaded_report(db, period, "profit", UploadFile(filename="profit.xlsx", file=BytesIO(b"old")))
-    storage.save_uploaded_report(db, period, "profit", UploadFile(filename="profit.xlsx", file=BytesIO(b"new")))
+    report = storage.save_uploaded_report(db, period, "profit", UploadFile(filename="profit.xlsx", file=BytesIO(b"new")))
     assert db.query(UploadedReport).filter_by(period_id=period.id, report_type="profit").count() == 1
-    assert (tmp_path / "b2b" / "2026" / "01" / "profit.xlsx").read_bytes() == b"new"
+    assert resolve_service_data_path(report.stored_path).read_bytes() == b"new"
 
 
 def test_timesheets_are_added_instead_of_replaced(db, tmp_path, monkeypatch):

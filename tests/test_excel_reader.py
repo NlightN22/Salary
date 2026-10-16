@@ -42,3 +42,30 @@ def test_header_only_workbook_is_rejected(tmp_path):
     pd.DataFrame(columns=["A", "B"]).to_excel(path, index=False)
     with pytest.raises(ValueError, match="нет строк"):
         read_excel(path)
+
+
+def test_large_workbook_keeps_first_and_last_rows(tmp_path):
+    path = tmp_path / "large.xlsx"
+    rows = 25_000
+    pd.DataFrame({"№": range(rows), "Комментарий": ["Проверка данных"] * rows}).to_excel(path, index=False)
+    result = read_excel(path)
+    assert len(result) == rows
+    assert result.iloc[0, 0] == 0
+    assert result.iloc[-1, 0] == rows - 1
+
+
+def test_unreadable_workbook_reports_both_reader_failures(tmp_path, monkeypatch):
+    path = tmp_path / "locked.xlsx"
+    path.write_bytes(b"placeholder")
+    attempts = []
+
+    def fail_read(_path, engine):
+        attempts.append(engine)
+        raise PermissionError(f"blocked by {engine}")
+
+    monkeypatch.setattr(pd, "read_excel", fail_read)
+    with pytest.raises(ValueError, match="Не удалось прочитать Excel-файл") as error:
+        read_excel(path)
+    assert attempts == ["openpyxl", "xlrd"]
+    assert "blocked by openpyxl" in str(error.value)
+    assert "blocked by xlrd" in str(error.value)

@@ -16,9 +16,9 @@ def report_directory(year, month):
 
 
 def report_stem(employee, year, month):
-    surname = str(employee).split()[0]
-    safe_surname = surname.replace("/", "_").replace("\\", "_").replace(":", "_")
-    return f"{safe_surname}_{year}_{MONTHS[month]}"
+    full_name = "_".join(str(employee).split())
+    safe_name = full_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    return f"{safe_name}_{MONTHS[month]}_{year}"
 
 
 def save_report(report, year, month):

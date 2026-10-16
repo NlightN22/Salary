@@ -2,12 +2,13 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
-from salary_web.models import ApiKey, ApiKeyDepartment, Department, User, UserDepartment
+from salary_web.models import ApiKey, Department, User, UserDepartment
 
 
 DEFAULT_DEPARTMENT_CODE = "b2b"
@@ -15,6 +16,7 @@ DEFAULT_DEPARTMENT_NAME = "B2B-направление"
 SESSION_COOKIE = "salary_user"
 SESSION_SECRET = os.getenv("SALARY_SESSION_SECRET") or secrets.token_urlsafe(32)
 API_KEY_HEADER = "X-API-Key"
+SESSION_LIFETIME = 12 * 60 * 60
 
 
 def validate_security_config() -> None:
@@ -58,8 +60,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
 
-def make_session_token(user_id: int) -> str:
-    payload = str(user_id)
+def make_session_token(user_id: int, session_version: int = 0) -> str:
+    payload = f"{user_id}:{session_version}:{int(time.time()) + SESSION_LIFETIME}"
     signature = hmac.new(
         SESSION_SECRET.encode("utf-8"),
         payload.encode("utf-8"),
@@ -72,16 +74,19 @@ def read_session_user_id(request: Request) -> int | None:
     token = request.cookies.get(SESSION_COOKIE)
     if not token or ":" not in token:
         return None
-    payload, signature = token.split(":", 1)
+    payload, signature = token.rsplit(":", 1)
     expected = hmac.new(
         SESSION_SECRET.encode("utf-8"),
         payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    if not hmac.compare_digest(signature, expected):
+    if not hmac.compare_digest(signature.encode("utf-8"), expected.encode("utf-8")):
         return None
     try:
-        return int(payload)
+        user_id, version, expires = map(int, payload.split(":"))
+        if expires <= time.time():
+            return None
+        return user_id
     except ValueError:
         return None
 
@@ -129,6 +134,8 @@ def current_user(request: Request, db: Session) -> User | None:
         return None
     user = db.get(User, int(user_id))
     if user is None or not user.is_active:
+        return None
+    if int(request.cookies[SESSION_COOKIE].split(":")[1]) != user.session_version:
         return None
     return user
 

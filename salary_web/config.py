@@ -19,11 +19,18 @@ def department_storage_code(department: object | None) -> str:
 
 
 def period_storage_dir(root: Path, period: object) -> Path:
+    department = getattr(period, "department", None)
+    name = str(getattr(department, "name", "") or department_storage_code(department)).strip()
+    code = "".join(c if c.isalnum() or c in " -_" else "_" for c in name).strip(" .") or "default"
+    department_id = getattr(department, "id", None)
+    if department_id is not None:
+        code = f"{code}_{department_id}"
     return (
-        root
-        / department_storage_code(getattr(period, "department", None))
+        root.parent / "periods"
+        / code
         / str(getattr(period, "year"))
-        / f"{int(getattr(period, 'month')):02d}"
+        / f"{int(getattr(period, 'month')):02d}_{MONTHS[int(getattr(period, 'month'))].capitalize()}"
+        / root.name
     )
 
 

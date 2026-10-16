@@ -14,7 +14,7 @@
     {% if calculation.pdf_path %}
       <a class="secondary-button" href="/calculations/{{ calculation.id }}/pdf/download">Скачать PDF</a>
     {% endif %}
-    <a class="secondary-button" href="/periods/{{ calculation.period.year }}/{{ '%02d'|format(calculation.period.month) }}#calculations">Вернуться к списку расчетов</a>
+    <a class="secondary-button" href="{{ period_url(calculation.period) }}#calculations">Вернуться к списку расчетов</a>
   </div>
 
   <div class="card final-summary-card">
@@ -40,7 +40,7 @@
         <h2>Оглавление</h2>
         <ol class="toc-list">
           {% for section in sections %}
-            <li><a href="#section-{{ section.code }}">{{ section.title }}</a></li>
+            <li><a href="#section-{{ section.code }}">{{ section.title }}{% if section.corrections %} <span class="correction-badge" title="В разделе есть ручные корректировки">Изменён</span>{% endif %}</a></li>
           {% endfor %}
           <li><a href="#additional-payment-form">Дополнительная выплата</a></li>
           <li><a href="#manual-entries">История ручных записей</a></li>
@@ -51,8 +51,19 @@
 
     <div class="calculation-main">
       {% for section in sections %}
-        <div class="card" id="section-{{ section.code }}">
-      <h3>{{ section.title }}</h3>
+        <div class="card{% if section.corrections %} corrected-section{% endif %}" id="section-{{ section.code }}">
+      <h3>{{ section.title }} {% if section.corrections %}<span class="correction-badge">Есть корректировки</span>{% endif %}</h3>
+      {% if section.corrections %}
+      <div class="correction-notice">
+        <strong>{% if section.code == 'debt' %}Корректировки суммы ПДЗ{% elif section.code == 'key_clients_profit' %}Прибыль, введённая вручную{% else %}Ручные корректировки{% endif %}</strong>
+        <ul>
+        {% for correction in section.corrections %}
+          <li><strong>{{ '{:,.2f}'.format(correction.amount).replace(',', ' ') }}</strong>{% if correction.comment %} — {{ correction.comment }}{% endif %}</li>
+        {% endfor %}
+        </ul>
+        <a href="#manual-entries">Изменить или удалить запись</a>
+      </div>
+      {% endif %}
       {% if not section.hide_field_table %}
       <table class="field-table">
         <tr>
@@ -164,8 +175,8 @@
     </div>
   {% endfor %}
 
-  <div class="card" id="additional-payment-form">
-    <h2>Дополнительная выплата</h2>
+  <div class="card{% if calculation.additional_payments %} corrected-section{% endif %}" id="additional-payment-form">
+    <h2>Дополнительная выплата {% if calculation.additional_payments %}<span class="correction-badge">Есть ручные выплаты</span>{% endif %}</h2>
     <form method="post" action="/calculations/{{ calculation.id }}/additional-payments">
       <input type="hidden" name="return_to" value="/calculations/{{ calculation.id }}#additional-payment-form">
       <label>Описание<br><input type="text" name="title" required></label><br>
@@ -242,9 +253,15 @@
       {% endif %}
     </div>
     <div class="top-actions">
-      <a class="secondary-button" href="/periods/{{ calculation.period.year }}/{{ '%02d'|format(calculation.period.month) }}#calculations">Вернуться к списку расчетов</a>
+      <a class="secondary-button" href="{{ period_url(calculation.period) }}#calculations">Вернуться к списку расчетов</a>
     </div>
   </div>
     </div>
   </div>
+<style>
+  .corrected-section { border-left: 4px solid #b77912; }
+  .correction-badge { display: inline-block; padding: 3px 7px; border-radius: 5px; background: #fff0c2; color: #684400; font-size: 12px; font-weight: 600; vertical-align: middle; }
+  .correction-notice { padding: 12px 16px; margin-bottom: 16px; background: #fff8e5; border: 1px solid #ead19a; border-radius: 8px; overflow-wrap: anywhere; }
+  .correction-notice ul { margin: 8px 0; padding-left: 20px; }
+</style>
 {% endblock %}

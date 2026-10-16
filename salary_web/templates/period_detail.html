@@ -47,7 +47,7 @@
       <p class="error compact-text">
         Важно: цикл сделки считается на последний день выбранного периода.
       </p>
-      <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/reports" enctype="multipart/form-data">
+      <form method="post" action="{{ period_url(period) }}/reports" enctype="multipart/form-data">
         <input type="file" name="files" id="report-files" aria-label="Выбрать отчеты" aria-describedby="report-files-status" multiple required><br>
         <p id="report-files-status" class="muted compact-text" role="status" aria-live="polite"></p>
         <ul id="report-files-list"></ul>
@@ -75,11 +75,11 @@
       {% endif %}
 
       <div class="button-row">
-        <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/validate" class="inline-form">
+        <form method="post" action="{{ period_url(period) }}/validate" class="inline-form">
           <button type="submit" {% if not completeness.complete %}disabled{% endif %}>Проверить отчеты</button>
         </form>
 
-        <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/calculate" class="inline-form">
+        <form method="post" action="{{ period_url(period) }}/calculate" class="inline-form">
           <button type="submit" {% if not completeness.validated %}disabled{% endif %}>Рассчитать</button>
         </form>
       </div>
@@ -105,11 +105,19 @@
   </table>
 
   <h2 id="calculations">Расчеты</h2>
+  <details class="card">
+    <summary>Создать ручной расчет</summary>
+    <p>Без исходных отчетов: название выплаты, сумма и комментарий. Итог считается автоматически.</p>
+    <form method="post" action="{{ period_url(period) }}/manual-calculations">
+      <label>ФИО сотрудника <input name="employee_name" required maxlength="255" placeholder="Фамилия Имя Отчество"></label>
+      <button type="submit">Создать ручной расчет</button>
+    </form>
+  </details>
   <div class="toolbar-row">
-    <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/pdf" class="inline-form">
+    <form method="post" action="{{ period_url(period) }}/pdf" class="inline-form">
       <button type="submit" {% if not completeness.validated %}disabled{% endif %}>Создать все расчеты</button>
     </form>
-    <form method="post" action="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}/calculations/delete" class="inline-form">
+    <form method="post" action="{{ period_url(period) }}/calculations/delete" class="inline-form">
       <button type="submit" class="danger-button" {% if not period.calculations %}disabled{% endif %}>Удалить все расчеты</button>
     </form>
   </div>
@@ -123,16 +131,22 @@
         <td>{{ calculation.employee.full_name }}</td>
         <td class="actions-cell">
           <div class="action-list">
+            <form method="post" action="/calculations/{{ calculation.id }}/calculate" class="inline-form" onsubmit="return confirm('Для автоматического расчета данные будут заново рассчитаны из отчетов; ручные корректировки этого сотрудника будут удалены. Ручная расчетка сохранится и откроется для заполнения. Продолжить?');">
+              <button type="submit" class="table-action-button">Создать расчет</button>
+            </form>
             <a class="table-action-button" href="/calculations/{{ calculation.id }}">Открыть расчет</a>
             {% if calculation.snapshot_json %}
               <form method="post" action="/calculations/{{ calculation.id }}/pdf" class="inline-form">
-                <input type="hidden" name="return_to" value="/periods/{{ period.year }}/{{ '%02d'|format(period.month) }}#calculations">
+                <input type="hidden" name="return_to" value="{{ period_url(period) }}#calculations">
                 <button type="submit" class="table-action-button">Создать расчет в PDF</button>
               </form>
             {% endif %}
             {% if calculation.pdf_path %}
               <a class="table-action-button" href="/calculations/{{ calculation.id }}/pdf/download">Скачать PDF</a>
             {% endif %}
+            <form method="post" action="/calculations/{{ calculation.id }}/delete" class="inline-form" onsubmit="return confirm('Удалить этот расчет, его ручные записи и PDF? Исходные отчеты сохранятся.');">
+              <button type="submit" class="table-action-button">Удалить расчет</button>
+            </form>
           </div>
         </td>
       </tr>

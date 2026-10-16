@@ -88,6 +88,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255))
     is_admin: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[int] = mapped_column(Integer, default=1)

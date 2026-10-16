@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from generators.chief_pdf_generator import generate_chief_pdf
-from generators.docx_generator import generate_docx, money as docx_money
 from generators.pdf_generator import generate_pdf, money as pdf_money
+from reportlab.platypus import Paragraph, Table
+from reportlab.lib.styles import getSampleStyleSheet
 
 
 def manager_report():
@@ -61,16 +62,48 @@ def chief_report(enabled_lukoil=False, debt_items=True):
     return report
 
 
-def test_all_document_generators_create_readable_files(tmp_path):
+def capture_pdf_story(monkeypatch, module, generate, *args):
+    original_document = module.SimpleDocTemplate
+    stories = []
+
+    class CapturingDocument:
+        def __init__(self, *document_args, **document_kwargs):
+            self.document = original_document(*document_args, **document_kwargs)
+
+        def build(self, story, **kwargs):
+            stories.extend(story)
+            return self.document.build(story, **kwargs)
+
+    monkeypatch.setattr(module, "SimpleDocTemplate", CapturingDocument)
+    generate(*args)
+    return stories
+
+
+def flowable_text(flowable):
+    if isinstance(flowable, str):
+        return [flowable]
+    if isinstance(flowable, Paragraph):
+        return [flowable.getPlainText()]
+    if isinstance(flowable, Table):
+        return [text for row in flowable._cellvalues for cell in row for text in flowable_text(cell)]
+    if isinstance(flowable, (list, tuple)):
+        return [text for item in flowable for text in flowable_text(item)]
+    return []
+
+
+def assert_pdf_layout_and_content(story, expected_text):
+    all_text = " ".join(text for flowable in story for text in flowable_text(flowable))
+    for text in expected_text:
+        assert text in all_text
+
+
+def test_manager_pdf_generator_creates_readable_file(tmp_path):
     report = manager_report()
     pdf = tmp_path / "manager.pdf"
-    docx = tmp_path / "manager.docx"
     generate_pdf(pdf, report["employee"], report["profit"], report["brand"], report["debt"],
                  report["cycle"], report["communications"], report["timesheet"],
                  report["additional_payments"], 2026, 1)
-    generate_docx(docx, report["employee"], report, 2026, 1)
     assert pdf.read_bytes().startswith(b"%PDF")
-    assert docx.read_bytes().startswith(b"PK")
 
 
 def test_chief_pdf_covers_enabled_and_disabled_optional_tables(tmp_path):
@@ -81,12 +114,10 @@ def test_chief_pdf_covers_enabled_and_disabled_optional_tables(tmp_path):
 
 
 def test_manager_generators_empty_optional_tables_and_invalid_money(tmp_path):
-    assert docx_money(object()) == "0.00"
     assert pdf_money(object()) == "0.00"
     report = manager_report()
     report["brand"]["lukoil"] = None
     report["debt"]["large_items"] = []
-    generate_docx(tmp_path / "empty.docx", report["employee"], report, 2026, 2)
     generate_pdf(
         tmp_path / "empty.pdf", report["employee"], report["profit"], report["brand"],
         report["debt"], report["cycle"], report["communications"], report["timesheet"],
@@ -104,3 +135,48 @@ def test_debt_corrections_table_wraps_comments_and_includes_totals():
     assert table._cellvalues[-1][1].getPlainText() == "1 185 234.85"
     width, height = table.wrap(520, 800)
     assert width <= 520 and height > 100
+
+
+def test_manager_pdf_story_keeps_long_comments_wrapped_and_headings_attached(tmp_path, monkeypatch):
+    import generators.pdf_generator as module
+
+    report = manager_report()
+    report["debt"]["large_items"][0]["comment"] = "Комментарий с длинным словом " + "оченьдлинныйтекст" * 15
+    report["additional_payments"]["items"][0]["description"] = "Выплата: за особый результат"
+    story = capture_pdf_story(
+        monkeypatch, module, generate_pdf, tmp_path / "manager-long.pdf", report["employee"],
+        report["profit"], report["brand"], report["debt"], report["cycle"],
+        report["communications"], report["timesheet"], report["additional_payments"], 2026, 1,
+    )
+    assert_pdf_layout_and_content(story, [report["employee"], "оченьдлинныйтекст", "Выплата: за особый результат"])
+
+
+def test_chief_pdf_story_contains_corrected_debt_and_client_data(tmp_path, monkeypatch):
+    import generators.chief_pdf_generator as module
+
+    report = chief_report()
+    report["debt"]["original_total"] = 150000
+    report["debt"]["corrections"] = [{"comment": "Проверка корректировки ПДЗ", "amount": 12345.67}]
+    report["debt"]["adjustment_total"] = 12345.67
+    report["debt"]["total"] = 162345.67
+    report["key_clients_profit"]["items"][0]["client"] = "Ключевой клиент Тест"
+    story = capture_pdf_story(
+        monkeypatch, module, generate_chief_pdf, tmp_path / "chief-content.pdf", report, 2026, 1,
+    )
+    assert_pdf_layout_and_content(story, [report["employee"], "Проверка корректировки ПДЗ", "Ключевой клиент Тест", "12 345.67"])
+
+
+def test_both_pdf_generators_keep_section_headings_with_tables():
+    import generators.chief_pdf_generator as chief
+    import generators.pdf_generator as manager
+
+    styles = getSampleStyleSheet()
+    for module in (manager, chief):
+        heading = Paragraph("Раздел", styles["Heading2"])
+        description = Paragraph("Описание раздела", styles["BodyText"])
+        table = Table([["Показатель", "Значение"]])
+        story = [heading, description, table]
+        module._keep_headings_with_tables(story)
+        assert heading.keepWithNext is True
+        assert description.keepWithNext is True
+        assert table.keepWithNext is False

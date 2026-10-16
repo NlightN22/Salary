@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from generators.chief_pdf_generator import generate_chief_pdf
 from generators.pdf_generator import generate_pdf
+from generators.manual_pdf_generator import generate_manual_pdf
 from services.report_io import report_stem
 from services.rounding import round_half_up
 from directions.b2b.config import OVERDUE_DEBT_PERCENT, CHIEF_OVERDUE_DEBT_PERCENT
@@ -421,6 +422,8 @@ def generate_pdf_for_calculation(db: Session, calculation: Calculation) -> Path:
 
     if report.get("report_type") == "chief":
         generate_chief_pdf(pdf_path, report, period.year, period.month)
+    elif report.get("report_type") == "manual":
+        generate_manual_pdf(pdf_path, report, period.year, period.month, calculation.additional_payments)
     elif report.get("report_type") == "manager":
         generate_pdf(
             pdf_path,
@@ -451,6 +454,12 @@ def _additional_total(report: dict) -> float:
 
 
 def _recalculate_totals(report: dict) -> None:
+    if report.get("report_type") == "manual":
+        total = _additional_total(report)
+        report.setdefault("additional_payments", {})["total"] = total
+        report["total_bonus"] = total
+        report["salary_total"] = total
+        return
     _recalculate_debt_adjustments(report)
     additional_payments = report.setdefault("additional_payments", {})
     additional_payments["total"] = _additional_total(report)

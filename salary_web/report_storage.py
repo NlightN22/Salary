@@ -80,15 +80,20 @@ def save_uploaded_report(
     for duplicate in matches[1:]:
         db.delete(duplicate)
     suffix = Path(upload.filename or "").suffix
-    filename = (f"timesheet_{uuid.uuid4().hex}{suffix}" if report_type == "timesheet"
-                else f"{report_type}{suffix}")
+    # Each upload gets an immutable path; DB rollback keeps the previous file valid.
+    filename = f"{report_type}_{uuid.uuid4().hex}{suffix}"
     target_path = target_dir / filename
+    temporary_path = target_path.with_suffix(target_path.suffix + ".part")
 
     hasher = hashlib.sha256()
-    with target_path.open("wb") as output:
-        while chunk := upload.file.read(1024 * 1024):
-            hasher.update(chunk)
-            output.write(chunk)
+    try:
+        with temporary_path.open("xb") as output:
+            while chunk := upload.file.read(1024 * 1024):
+                hasher.update(chunk)
+                output.write(chunk)
+        temporary_path.replace(target_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
     file_hash = hasher.hexdigest()
 
