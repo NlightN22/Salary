@@ -1,9 +1,7 @@
 """Calculation of B2B manager salary reports. Rendering is deliberately separate."""
 
-from directions.b2b.config import CHIEF_EMPLOYEE, DEPARTMENT_NAME
-from services.calculation_context import load_context
+from directions.b2b.config import CHIEF_EMPLOYEE
 from services.report_builder import build_employee_report
-from services.report_io import save_report
 
 
 def calculate_managers(context):
@@ -28,14 +26,3 @@ def calculate_managers(context):
         report["report_type"] = "manager"
         reports.append(report)
     return reports
-
-
-def main():
-    context = load_context(DEPARTMENT_NAME)
-    for report in calculate_managers(context):
-        path = save_report(report, context["year"], context["month"], DEPARTMENT_NAME)
-        print(f"Создан JSON менеджера: {path}")
-
-
-if __name__ == "__main__":  # pragma: no cover - exercised as a process entry point
-    main()

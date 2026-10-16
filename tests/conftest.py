@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="salary-tests-"))
 os.environ.setdefault("SALARY_DATA_DIR", str(TEST_DATA_DIR))
+os.environ.setdefault("SALARY_DEPARTMENTS_DIR", str(TEST_DATA_DIR / "departments"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{TEST_DATA_DIR / 'web.db'}")
 os.environ.setdefault("SALARY_SESSION_SECRET", "test-only-secret-not-for-production-123456")
 os.environ.setdefault("SALARY_ADMIN_PASSWORD", "test-admin-password")

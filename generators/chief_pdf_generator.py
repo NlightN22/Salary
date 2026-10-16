@@ -8,7 +8,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from services.report_io import MONTHS
+from services.report_naming import MONTHS
 from services.rounding import round_half_up
 from generators.debt_adjustments import debt_adjustment_table
 

@@ -4,7 +4,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Spacer
 
 from generators.chief_pdf_generator import _cell, _table, money
-from services.report_io import MONTHS
+from services.report_naming import MONTHS
 
 
 def generate_manual_pdf(path, report, year, month, payments):

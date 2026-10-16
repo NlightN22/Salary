@@ -4,8 +4,9 @@ import os
 
 WEB_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("SALARY_DATA_DIR", WEB_DIR / "service_data"))
-UPLOADS_DIR = DATA_DIR / "uploads"
-GENERATED_DIR = DATA_DIR / "generated"
+DEPARTMENTS_DIR = Path(os.getenv("SALARY_DEPARTMENTS_DIR", WEB_DIR.parent / "data"))
+UPLOADS_DIR = DEPARTMENTS_DIR
+GENERATED_DIR = DEPARTMENTS_DIR
 DB_PATH = DATA_DIR / "salary.db"
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
@@ -18,46 +19,33 @@ def department_storage_code(department: object | None) -> str:
     return safe.strip("-") or "default"
 
 
+def department_storage_name(value: str | None) -> str:
+    name = str(value or "").strip()
+    safe = "".join(character if character.isalnum() or character in "-_" else "_" for character in name)
+    return safe.strip("_") or "default"
+
+
 def period_storage_dir(root: Path, period: object) -> Path:
     department = getattr(period, "department", None)
-    name = str(getattr(department, "name", "") or department_storage_code(department)).strip()
-    code = "".join(c if c.isalnum() or c in " -_" else "_" for c in name).strip(" .") or "default"
-    department_id = getattr(department, "id", None)
-    if department_id is not None:
-        code = f"{code}_{department_id}"
-    return (
-        root.parent / "periods"
-        / code
-        / str(getattr(period, "year"))
-        / f"{int(getattr(period, 'month')):02d}_{MONTHS[int(getattr(period, 'month'))].capitalize()}"
-        / root.name
-    )
+    name = getattr(department, "name", None)
+    safe_name = department_storage_name(name) if name else department_storage_code(department)
+    if not name and getattr(department, "id", None) is not None:
+        safe_name = f"{safe_name}_{department.id}"
+    return root / safe_name / str(getattr(period, "year")) / str(int(getattr(period, "month")))
 
 
 def resolve_service_data_path(stored_path: str | Path) -> Path:
-    """Resolve paths stored before/after Docker migration.
-
-    Older rows may contain absolute macOS paths like
-    /Users/.../salary_web/service_data/generated/...
-    Docker sees the same mounted folder as /app/salary_web/service_data.
-    New rows may contain paths relative to DATA_DIR.
-    """
+    """Resolve a department-scoped path stored in SQLite."""
     path = Path(stored_path)
-    if path.exists():
-        return path
-    if not path.is_absolute():
-        return DATA_DIR / path
-    parts = path.parts
-    if "service_data" in parts:
-        index = parts.index("service_data")
-        return DATA_DIR.joinpath(*parts[index + 1:])
+    if not path.is_absolute() and path.parts and path.parts[0] == "data_root":
+        return DEPARTMENTS_DIR.joinpath(*path.parts[1:])
     return path
 
 
 def stored_service_data_path(path: str | Path) -> str:
     path = Path(path)
     try:
-        return str(path.resolve().relative_to(DATA_DIR.resolve()))
+        return str(Path("data_root") / path.resolve().relative_to(DEPARTMENTS_DIR.resolve()))
     except ValueError:
         return str(path)
 

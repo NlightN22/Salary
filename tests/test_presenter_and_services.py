@@ -10,7 +10,7 @@ from salary_web.snapshot_presenter import (
 from salary_web.ui_helpers import report_type_label, status_label
 from services.file_finder import find_files
 from services.period_finder import get_latest_period
-from services.report_io import load_reports, report_stem, save_report
+from services.report_naming import report_stem
 from tests.test_generators import chief_report, manager_report
 
 
@@ -54,16 +54,39 @@ def test_presenter_handles_empty_unknown_and_fallback_values():
 
 def test_file_finder_and_latest_period(tmp_path):
     period = tmp_path / "Data" / "B2B-направление" / "2026" / "12"
-    period.mkdir(parents=True)
+    reports = period / "reports"
+    reports.mkdir(parents=True)
     (tmp_path / "Data" / "B2B-направление" / "2025" / "11").mkdir(parents=True)
     (tmp_path / "Data" / "2027" / "1").mkdir(parents=True)
     names = ["profit.xlsx", "brand.xlsx", "debt.xlsx", "Коммуникации.xlsx", "Цикл.xlsx", "Табель 2.xlsx", "Табель 1.xlsx", "other.txt"]
     for name in names:
-        (period / name).touch()
+        (reports / name).touch()
+    (reports / "__init__.py").touch()
     files = find_files(period)
     assert set(files) == {"profit", "brand", "debt", "communications", "cycle", "timesheet"}
     assert [path.name for path in files["timesheet"]] == ["Табель 1.xlsx", "Табель 2.xlsx"]
     assert get_latest_period(tmp_path / "Data", department="B2B-направление") == period
+
+
+def test_file_finder_rejects_duplicate_source_reports(tmp_path):
+    reports = tmp_path / "2026" / "6" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "profit.xlsx").touch()
+    (reports / "profit-final.xlsx").touch()
+    with pytest.raises(ValueError, match="несколько файлов"):
+        find_files(reports.parent)
+
+
+def test_file_finder_recognizes_canonical_web_upload_names(tmp_path):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    names = ("profit.xlsx", "brand_sales.xlsx", "debt.xlsx", "communications.xlsx",
+             "cycle.xlsx", "timesheet_1.xlsx", "timesheet_2.xlsx")
+    for name in names:
+        (reports / name).touch()
+    files = find_files(tmp_path)
+    assert set(files) == {"profit", "brand", "debt", "communications", "cycle", "timesheet"}
+    assert [path.name for path in files["timesheet"]] == ["timesheet_1.xlsx", "timesheet_2.xlsx"]
 
 
 def test_latest_period_never_falls_back_to_unscoped_data(tmp_path):
@@ -72,22 +95,12 @@ def test_latest_period_never_falls_back_to_unscoped_data(tmp_path):
         get_latest_period(tmp_path / "Data", department="B2B-направление")
 
 
-def test_report_io_roundtrip_and_safe_filename(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    report = {"employee": "Иванов/Опасный Имя Отчество", "value": 1}
-    path = save_report(report, 2026, 1, "B2B-направление")
-    assert "/" not in path.name
-    other_path = save_report(report, 2026, 1, "Другое подразделение")
-    assert other_path.parent != path.parent
-    assert other_path.exists()
-    assert [item[0] for item in load_reports(2026, 1, "Другое подразделение")] == [other_path]
-    assert [item[0] for item in load_reports(2026, 1, "B2B-направление")] == [path]
-    assert report_stem("Иванов:Тест Имя", 2026, 1).startswith("Иванов_Тест")
-    loaded = load_reports(2026, 1, "B2B-направление")
-    assert loaded[0][1] == report
+def test_latest_period_uses_department_name_as_folder(tmp_path):
+    period = tmp_path / "data" / "B2B-направление" / "2026" / "8"
+    (period / "reports").mkdir(parents=True)
+    assert get_latest_period(tmp_path / "data", department="B2B-направление") == period
 
 
-def test_report_io_rejects_nan(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(ValueError):
-        save_report({"employee": "Иванов Иван", "value": float("nan")}, 2026, 1, "B2B-направление")
+def test_report_stem_uses_full_safe_name_month_and_year():
+    assert report_stem("Иванов/Иван Иванович", 2026, 10) == "Иванов_Иван_Иванович_октябрь_2026"
+    assert report_stem("Иванов Петр Петрович", 2026, 10) != report_stem("Иванов Иван Иванович", 2026, 10)

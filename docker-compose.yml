@@ -9,6 +9,7 @@ services:
       PORT: 8000
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://127.0.0.1:${PORT:-8000}}
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/salary_web/service_data/salary.db}
+      SALARY_DEPARTMENTS_DIR: /app/data
       SALARY_REQUIRE_SECURE_CONFIG: "1"
       SALARY_SESSION_SECRET: ${SALARY_SESSION_SECRET:?Set SALARY_SESSION_SECRET in .env}
       SALARY_ADMIN_PASSWORD: ${SALARY_ADMIN_PASSWORD:-}
@@ -16,8 +17,7 @@ services:
       - "127.0.0.1:${PORT:-8000}:8000"
     volumes:
       - ./salary_web/service_data:/app/salary_web/service_data
-      - ./Report:/app/Report
-      - ./Data:/app/Data
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
       interval: 30s

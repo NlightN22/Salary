@@ -1,75 +1,42 @@
-from pathlib import Path
-
-import pytest
-
 import calculate_salary as root_calculate
-import main as root_render
+import main as root_main
 import directions.b2b.calculate_salary as calculate_module
-import directions.b2b.manager_salary as manager_module
-import directions.b2b.render_pdfs as render_module
 from models.employee_report import BrandKPI, DebtItem, EmployeeReport
 
 
 def test_compatibility_entrypoints_delegate(monkeypatch):
     calls = []
     monkeypatch.setattr(root_calculate, "main", lambda: calls.append("calculate"))
-    monkeypatch.setattr(root_render, "main", lambda: calls.append("render"))
+    monkeypatch.setattr(root_main, "main", lambda: calls.append("main"))
     root_calculate.main()
-    root_render.main()
-    assert calls == ["calculate", "render"]
+    root_main.main()
+    assert calls == ["calculate", "main"]
 
 
-def test_calculate_salary_main_saves_manager_and_chief(monkeypatch, capsys):
-    context = {"year": 2026, "month": 1}
-    saved = []
-    monkeypatch.setattr(calculate_module, "load_context", lambda department: context)
-    monkeypatch.setattr(calculate_module, "calculate_managers", lambda value: [{"employee": "Manager"}])
-    monkeypatch.setattr(calculate_module, "calculate_chief", lambda value, managers: {"employee": "Chief"})
-    monkeypatch.setattr(calculate_module, "save_report", lambda report, year, month, department: saved.append(report) or Path(report["employee"] + ".json"))
+def test_calculate_salary_generates_manager_and_chief_pdfs(monkeypatch, tmp_path, capsys):
+    context = {"year": 2026, "month": 1, "period_dir": tmp_path}
+    manager = {
+        "employee": "Manager", "report_type": "manager", "profit": {}, "brand": {},
+        "debt": {}, "cycle": {}, "communications": {}, "timesheet": {},
+        "additional_payments": {},
+    }
+    chief = {"employee": "Chief", "report_type": "chief"}
+    monkeypatch.setattr(calculate_module, "load_context", lambda _department: context)
+    monkeypatch.setattr(calculate_module, "calculate_managers", lambda _context: [manager])
+    monkeypatch.setattr(calculate_module, "calculate_chief", lambda _context, _managers: chief)
+    monkeypatch.setattr(calculate_module, "report_stem", lambda employee, year, month: f"{employee}_{year}_{month}")
+    generated = []
+    monkeypatch.setattr(calculate_module, "generate_pdf", lambda path, *args: generated.append(("manager", path)))
+    monkeypatch.setattr(calculate_module, "generate_chief_pdf", lambda path, *args: generated.append(("chief", path)))
+
     calculate_module.main()
-    assert [item["employee"] for item in saved] == ["Manager", "Chief"]
-    assert "JSON-файлов создано: 2" in capsys.readouterr().out
 
-
-def test_manager_main_saves_each_report(monkeypatch, capsys):
-    context = {"year": 2026, "month": 1}
-    monkeypatch.setattr(manager_module, "load_context", lambda department: context)
-    monkeypatch.setattr(manager_module, "calculate_managers", lambda value: [{"employee": "Manager", "report_type": "manager"}])
-    monkeypatch.setattr(manager_module, "save_report", lambda *args: Path("manager.json"))
-    manager_module.main()
-    assert "Создан JSON менеджера" in capsys.readouterr().out
-
-
-def test_render_pdfs_main_all_report_types(monkeypatch, tmp_path, capsys):
-    period = tmp_path / "2026" / "1"
-    period.mkdir(parents=True)
-    reports = [
-        (period / "chief.json", {"employee": "Chief", "report_type": "chief"}),
-        (period / "manager.json", {
-            "employee": "Manager", "report_type": "manager", "profit": {}, "brand": {},
-            "debt": {}, "cycle": {}, "communications": {}, "timesheet": {}, "additional_payments": {},
-        }),
+    assert [(kind, path.name) for kind, path in generated] == [
+        ("manager", "Manager_2026_1.pdf"),
+        ("chief", "Chief_2026_1.pdf"),
     ]
-    calls = []
-    monkeypatch.setattr(render_module, "get_latest_period", lambda **kwargs: period)
-    monkeypatch.setattr(render_module, "load_reports", lambda year, month, department: reports)
-    monkeypatch.setattr(render_module, "generate_chief_pdf", lambda *args: calls.append("chief"))
-    monkeypatch.setattr(render_module, "generate_pdf", lambda *args: calls.append("manager"))
-    render_module.main()
-    assert calls == ["chief", "manager"]
-    assert capsys.readouterr().out.count("Создан PDF") == 2
-
-
-def test_render_pdfs_rejects_empty_and_unknown_reports(monkeypatch, tmp_path):
-    period = tmp_path / "2026" / "1"
-    period.mkdir(parents=True)
-    monkeypatch.setattr(render_module, "get_latest_period", lambda **kwargs: period)
-    monkeypatch.setattr(render_module, "load_reports", lambda *args: [])
-    with pytest.raises(FileNotFoundError, match="JSON-файлы"):
-        render_module.main()
-    monkeypatch.setattr(render_module, "load_reports", lambda *args: [(period / "bad.json", {"employee": "X", "report_type": "bad"})])
-    with pytest.raises(ValueError, match="Неизвестный тип"):
-        render_module.main()
+    assert all(path.parent == tmp_path for _, path in generated)
+    assert "PDF-файлов создано: 2" in capsys.readouterr().out
 
 
 def test_legacy_dataclasses_are_constructible():

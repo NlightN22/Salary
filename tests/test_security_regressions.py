@@ -138,7 +138,7 @@ def test_department_period_pages_and_storage_are_isolated(db, tmp_path, monkeypa
 
 
 def test_report_filename_uses_full_name_month_and_year():
-    from services.report_io import report_stem
+    from services.report_naming import report_stem
     assert report_stem("Иванов Иван Иванович", 2026, 10) == "Иванов_Иван_Иванович_октябрь_2026"
     assert report_stem("Иванов Петр Петрович", 2026, 10) != report_stem("Иванов Иван Иванович", 2026, 10)
 

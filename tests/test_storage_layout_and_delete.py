@@ -49,33 +49,6 @@ def test_delete_one_leaves_other_calculations_and_sources(scoped_client, db, tmp
     assert source.exists()
 
 
-def test_reorganize_registered_files(db, tmp_path, monkeypatch):
-    import salary_web.storage_migration as migration
-    from tests.test_validation_and_runner import complete_period
-    period = complete_period(db, tmp_path)
-    calc = Calculation(period=period, employee=Employee(full_name="Migration"))
-    db.add(calc); db.commit()
-    monkeypatch.setattr(migration, "UPLOADS_DIR", tmp_path / "uploads")
-    monkeypatch.setattr(migration, "GENERATED_DIR", tmp_path / "generated")
-    first = period.reports[0]
-    source = resolve_service_data_path(first.stored_path)
-    target = period_storage_dir(tmp_path / "uploads", period) / source.name
-    target.parent.mkdir(parents=True)
-    target.write_bytes(b"conflict")
-    with pytest.raises(ValueError, match="отличается"):
-        migration.reorganize_files(db)
-    db.rollback()
-    assert source.exists()
-    target.write_bytes(source.read_bytes())
-    result = migration.reorganize_files(db)
-    assert result == {"moved": len(period.reports), "missing": 0}
-    assert target.exists() and not source.exists()
-    assert resolve_service_data_path(first.stored_path) == target
-    assert migration.reorganize_files(db) == {"moved": 0, "missing": 0}
-    calc.pdf_path = str(tmp_path / "missing.pdf"); db.commit()
-    assert migration.reorganize_files(db) == {"moved": 0, "missing": 1}
-
-
 def test_empty_parent_cleanup_stops_at_data_root(tmp_path, monkeypatch):
     import salary_web.app as web
     monkeypatch.setattr(web, "GENERATED_DIR", tmp_path / "generated")

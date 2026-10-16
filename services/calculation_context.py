@@ -21,11 +21,13 @@ def load_context(department):
     if missing:
         raise FileNotFoundError("Не найдены файлы: " + ", ".join(missing))
 
-    return load_context_from_files(
+    context = load_context_from_files(
         year=int(period_folder.parent.name),
         month=int(period_folder.name),
         files=files,
     )
+    context["period_dir"] = period_folder
+    return context
 
 
 def load_context_from_files(year, month, files):

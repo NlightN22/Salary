@@ -54,7 +54,7 @@ def should_ignore_upload(filename: str) -> bool:
 
 
 def period_upload_dir(period: Period) -> Path:
-    return period_storage_dir(UPLOADS_DIR, period)
+    return period_storage_dir(UPLOADS_DIR, period) / "reports"
 
 
 def save_uploaded_report(

@@ -21,10 +21,8 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
-RUN mkdir -p /app/salary_web/service_data/uploads \
-    /app/salary_web/service_data/generated \
-    /app/Report \
-    /app/Data
+RUN mkdir -p /app/salary_web/service_data \
+    /app/data
 
 EXPOSE 8000
 

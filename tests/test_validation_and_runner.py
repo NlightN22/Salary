@@ -168,5 +168,5 @@ def test_pdf_path_is_partitioned_by_department(db, tmp_path, monkeypatch):
 
     monkeypatch.setattr(editor, "generate_pdf", fake_generate)
     path = editor.generate_pdf_for_calculation(db, calculation)
-    assert path.parent == tmp_path.parent / "periods" / f"North_{department.id}" / "2026" / "04_Апрель" / tmp_path.name
+    assert path.parent == tmp_path / "North" / "2026" / "4"
     assert path.read_bytes().startswith(b"%PDF")

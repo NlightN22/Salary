@@ -27,6 +27,8 @@ def test_complete_web_admin_and_manual_entry_workflow():
         code = f"dept-{marker}"
         assert client.post("/admin/departments", data={"code": code, "name": "Тестовый отдел"}).status_code == 303
         assert client.post("/admin/departments", data={"code": code, "name": "Дубль"}).status_code == 400
+        assert client.post("/admin/departments", data={"code": code + "-path-a", "name": "Отдел/Тестовый"}).status_code == 303
+        assert client.post("/admin/departments", data={"code": code + "-path-b", "name": "Отдел?Тестовый"}).status_code == 400
         db = SessionLocal()
         department = db.query(Department).filter_by(code=code).one()
         department_id = department.id

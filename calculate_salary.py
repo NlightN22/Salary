@@ -1,4 +1,4 @@
-"""Compatibility entry point for building B2B salary JSON files."""
+"""Compatibility entry point for calculating B2B salaries and generating PDFs."""
 
 from directions.b2b.calculate_salary import main
 

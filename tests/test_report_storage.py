@@ -51,7 +51,7 @@ def test_new_upload_path_contains_department_and_period(db, tmp_path, monkeypatc
     upload = UploadFile(filename="profit.xlsx", file=BytesIO(b"content"))
     report = storage.save_uploaded_report(db, period, "profit", upload)
     path = resolve_service_data_path(report.stored_path)
-    assert path.parent == tmp_path.parent / "periods" / f"SALES-EAST_{period.department_id}" / "2026" / "01_Январь" / tmp_path.name
+    assert path.parent == tmp_path / "SALES-EAST" / "2026" / "1" / "reports"
     assert path.read_bytes() == b"content"
     assert report.file_hash
 

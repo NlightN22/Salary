@@ -18,8 +18,6 @@ ENV/
 salary_web/service_data/
 service_data/
 tmp/
-Report/
-Data/
 data/
 
 *.log

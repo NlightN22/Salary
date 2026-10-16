@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from generators.chief_pdf_generator import generate_chief_pdf
 from generators.pdf_generator import generate_pdf
 from generators.manual_pdf_generator import generate_manual_pdf
-from services.report_io import report_stem
+from services.report_naming import report_stem
 from services.rounding import round_half_up
 from directions.b2b.config import OVERDUE_DEBT_PERCENT, CHIEF_OVERDUE_DEBT_PERCENT
 from salary_web.config import GENERATED_DIR, period_storage_dir, stored_service_data_path

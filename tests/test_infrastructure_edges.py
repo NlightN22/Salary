@@ -16,13 +16,12 @@ from salary_web.calculation_runner import _period_files as runner_period_files, 
 from services.file_finder import find_files
 
 
-def test_service_path_compatibility_variants(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "service_data")
+def test_department_scoped_path_resolution(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DEPARTMENTS_DIR", tmp_path / "data")
     existing = tmp_path / "existing.pdf"; existing.write_bytes(b"x")
     assert config.resolve_service_data_path(existing) == existing
-    assert config.resolve_service_data_path("generated/x.pdf") == config.DATA_DIR / "generated/x.pdf"
-    old = Path("/old/mac/salary_web/service_data/generated/x.pdf")
-    assert config.resolve_service_data_path(old) == config.DATA_DIR / "generated/x.pdf"
+    assert config.resolve_service_data_path("data_root/B2B/2026/6/report.pdf") == tmp_path / "data/B2B/2026/6/report.pdf"
+    assert config.resolve_service_data_path("old/path.pdf") == Path("old/path.pdf")
     outside = tmp_path / "outside" / "x.pdf"
     assert config.stored_service_data_path(outside) == str(outside)
     assert config.department_storage_code(None) == "default"

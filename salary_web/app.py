@@ -34,6 +34,7 @@ from salary_web.config import (
     REPORT_DESCRIPTIONS,
     REPORT_TYPES,
     UPLOADS_DIR,
+    department_storage_name,
     period_storage_dir,
     resolve_service_data_path,
 )
@@ -759,7 +760,14 @@ def create_department_form(
     db: Session = Depends(get_db),
 ):
     require_admin(request, db)
-    department = Department(code=code.strip(), name=name.strip(), is_active=1)
+    clean_name = name.strip()
+    folder_name = department_storage_name(clean_name)
+    if not clean_name or any(
+        department_storage_name(existing.name) == folder_name
+        for existing in db.query(Department).all()
+    ):
+        raise HTTPException(status_code=400, detail="Название отдела должно быть уникальным")
+    department = Department(code=code.strip(), name=clean_name, is_active=1)
     db.add(department)
     try:
         db.commit()
@@ -1275,7 +1283,7 @@ def get_period_by_department_date_or_404(
 
 
 def department_url_name(department: Department) -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "_" for c in department.name).strip("_") or "Отдел"
+    return department_storage_name(department.name)
 
 
 def get_web_period(request: Request, db: Session, year: int, month: int):
@@ -1568,9 +1576,8 @@ def remove_period_calculations(db: Session, period: Period, preserve_manual: boo
         remove_calculation(db, calculation)
     db.flush()
 
-    output_dir = period_storage_dir(GENERATED_DIR, period)
-    if not preserve_manual and output_dir.exists():
-        rmtree(output_dir)
+    # PDFs live beside the reports/ folder. Remove only registered PDFs above;
+    # deleting the whole period directory here would also erase source Excel.
 
     completeness = report_completeness(period)
     period.status = (
@@ -1601,6 +1608,10 @@ def delete_period(db: Session, period: Period) -> None:
                 _remove_empty_parents(path.parent)
         except OSError:
             pass
+
+    period_dir = period_storage_dir(UPLOADS_DIR, period)
+    if period_dir.exists():
+        rmtree(period_dir)
 
     db.query(AdditionalPayment).filter(AdditionalPayment.period_id == period.id).delete(
         synchronize_session=False

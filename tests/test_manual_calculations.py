@@ -31,7 +31,7 @@ def test_manual_duplicate_race(scoped_client, db, monkeypatch, operation):
 
 def test_storage_without_persisted_department(tmp_path):
     from salary_web.config import period_storage_dir
-    assert period_storage_dir(tmp_path, SimpleNamespace(year=2026, month=1)) == tmp_path.parent / "periods" / "default" / "2026" / "01_Январь" / tmp_path.name
+    assert period_storage_dir(tmp_path, SimpleNamespace(year=2026, month=1)) == tmp_path / "default" / "2026" / "1"
 
 
 def test_manual_web_lifecycle(scoped_client, db, tmp_path, monkeypatch):

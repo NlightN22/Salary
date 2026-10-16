@@ -147,7 +147,7 @@ def test_remove_calculation_files_and_directories(db, monkeypatch, tmp_path):
     monkeypatch.setattr(web, "period_storage_dir", lambda *_: output)
     monkeypatch.setattr(web, "report_completeness", lambda *_: {"validated": False, "errors": False, "complete": False})
     web.remove_period_calculations(db, period)
-    assert not pdf.exists() and not output.exists()
+    assert not pdf.exists() and output.exists()
     web._remove_empty_parents(tmp_path / "missing")
 
 

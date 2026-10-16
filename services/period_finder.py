@@ -1,8 +1,9 @@
 from pathlib import Path
 
 
-def get_latest_period(data_root="Data", *, department):
-    department_dir = Path(data_root) / department_path_component(department)
+def get_latest_period(data_root="data", *, department):
+    component = department_path_component(department)
+    department_dir = Path(data_root) / component
     if not department_dir.is_dir():
         raise FileNotFoundError(f"Не найдена папка данных подразделения: {department_dir}")
 
