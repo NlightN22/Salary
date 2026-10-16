@@ -101,10 +101,10 @@ def test_presenter_remaining_branches():
 
 def test_context_load_and_errors(monkeypatch, tmp_path):
     folder = tmp_path / "2026" / "1"; folder.mkdir(parents=True)
-    monkeypatch.setattr(calculation_context, "get_latest_period", lambda: folder)
+    monkeypatch.setattr(calculation_context, "get_latest_period", lambda **_kwargs: folder)
     monkeypatch.setattr(calculation_context, "find_files", lambda _p: {})
     with pytest.raises(FileNotFoundError):
-        calculation_context.load_context()
+        calculation_context.load_context("B2B-направление")
 
     files = {name: tmp_path / f"{name}.xlsx" for name in calculation_context.REQUIRED_FILES}
     frames = {
@@ -119,7 +119,7 @@ def test_context_load_and_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(calculation_context, "read_excel", lambda p: frames[str(p)])
     for parser_name in ("ProfitParser", "BrandParser", "DebtParser", "CommParser", "CycleParser", "TimesheetParser"):
         monkeypatch.setattr(calculation_context, parser_name, lambda frame: frame)
-    result = calculation_context.load_context()
+    result = calculation_context.load_context("B2B-направление")
     assert result["year"] == 2026
     aliased = dict(files); aliased["brand_sales"] = aliased.pop("brand")
     assert calculation_context.load_context_from_files(2026, 1, aliased)["month"] == 1

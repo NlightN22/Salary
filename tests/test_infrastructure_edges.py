@@ -129,7 +129,7 @@ def test_ignored_upload_and_empty_file_collections(tmp_path):
 
 
 def test_runner_rejects_complete_but_unvalidated(db, monkeypatch):
-    period = Period(year=2026, month=9, department=Department(code="run", name="Run"))
+    period = Period(year=2026, month=9, department=Department(code="b2b", name="B2B"))
     db.add(period); db.commit()
     monkeypatch.setattr("salary_web.calculation_runner.report_completeness", lambda *_: {
         "complete": True, "validated": False, "missing": [],

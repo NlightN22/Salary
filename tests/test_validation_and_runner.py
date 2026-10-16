@@ -133,10 +133,18 @@ def test_recalculation_replaces_snapshot_and_clears_manual_rows(db, tmp_path, mo
 
 
 def test_calculation_requires_complete_and_validated_reports(db):
-    period = Period(year=2026, month=1, department=Department(code="x", name="X"))
+    period = Period(year=2026, month=1, department=Department(code="b2b", name="B2B"))
     db.add(period)
     db.commit()
     with pytest.raises(ValueError, match="Не хватает"):
+        runner.calculate_period(db, period)
+
+
+def test_calculation_rejects_unconfigured_department_before_reading_reports(db):
+    period = Period(year=2026, month=1, department=Department(code="north", name="Северный отдел"))
+    db.add(period)
+    db.commit()
+    with pytest.raises(ValueError, match="Северный отдел.*модуль не настроен"):
         runner.calculate_period(db, period)
 
 

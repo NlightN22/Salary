@@ -53,29 +53,41 @@ def test_presenter_handles_empty_unknown_and_fallback_values():
 
 
 def test_file_finder_and_latest_period(tmp_path):
-    period = tmp_path / "Data" / "2026" / "12"
+    period = tmp_path / "Data" / "B2B-направление" / "2026" / "12"
     period.mkdir(parents=True)
-    (tmp_path / "Data" / "2025" / "11").mkdir(parents=True)
+    (tmp_path / "Data" / "B2B-направление" / "2025" / "11").mkdir(parents=True)
+    (tmp_path / "Data" / "2027" / "1").mkdir(parents=True)
     names = ["profit.xlsx", "brand.xlsx", "debt.xlsx", "Коммуникации.xlsx", "Цикл.xlsx", "Табель 2.xlsx", "Табель 1.xlsx", "other.txt"]
     for name in names:
         (period / name).touch()
     files = find_files(period)
     assert set(files) == {"profit", "brand", "debt", "communications", "cycle", "timesheet"}
     assert [path.name for path in files["timesheet"]] == ["Табель 1.xlsx", "Табель 2.xlsx"]
-    assert get_latest_period(tmp_path / "Data") == period
+    assert get_latest_period(tmp_path / "Data", department="B2B-направление") == period
+
+
+def test_latest_period_never_falls_back_to_unscoped_data(tmp_path):
+    (tmp_path / "Data" / "2027" / "1").mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match="подразделения"):
+        get_latest_period(tmp_path / "Data", department="B2B-направление")
 
 
 def test_report_io_roundtrip_and_safe_filename(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     report = {"employee": "Иванов/Опасный Имя Отчество", "value": 1}
-    path = save_report(report, 2026, 1)
+    path = save_report(report, 2026, 1, "B2B-направление")
     assert "/" not in path.name
+    other_path = save_report(report, 2026, 1, "Другое подразделение")
+    assert other_path.parent != path.parent
+    assert other_path.exists()
+    assert [item[0] for item in load_reports(2026, 1, "Другое подразделение")] == [other_path]
+    assert [item[0] for item in load_reports(2026, 1, "B2B-направление")] == [path]
     assert report_stem("Иванов:Тест Имя", 2026, 1).startswith("Иванов_Тест")
-    loaded = load_reports(2026, 1)
+    loaded = load_reports(2026, 1, "B2B-направление")
     assert loaded[0][1] == report
 
 
 def test_report_io_rejects_nan(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError):
-        save_report({"employee": "Иванов Иван", "value": float("nan")}, 2026, 1)
+        save_report({"employee": "Иванов Иван", "value": float("nan")}, 2026, 1, "B2B-направление")

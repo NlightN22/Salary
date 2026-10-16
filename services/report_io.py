@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from services.period_finder import department_path_component
+
 
 MONTHS = {
     1: "январь", 2: "февраль", 3: "март", 4: "апрель",
@@ -9,8 +11,8 @@ MONTHS = {
 }
 
 
-def report_directory(year, month):
-    path = Path("Report") / str(year) / str(month)
+def report_directory(year, month, department):
+    path = Path("Report") / department_path_component(department) / str(year) / str(month)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -21,15 +23,15 @@ def report_stem(employee, year, month):
     return f"{safe_name}_{MONTHS[month]}_{year}"
 
 
-def save_report(report, year, month):
-    path = report_directory(year, month) / f"{report_stem(report['employee'], year, month)}.json"
+def save_report(report, year, month, department):
+    path = report_directory(year, month, department) / f"{report_stem(report['employee'], year, month)}.json"
     with path.open("w", encoding="utf-8") as stream:
         json.dump(report, stream, ensure_ascii=False, indent=2, allow_nan=False)
     return path
 
 
-def load_reports(year, month):
-    folder = report_directory(year, month)
+def load_reports(year, month, department):
+    folder = report_directory(year, month, department)
     reports = []
     for path in sorted(folder.glob("*.json")):
         with path.open(encoding="utf-8") as stream:

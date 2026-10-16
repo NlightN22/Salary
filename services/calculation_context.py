@@ -14,8 +14,8 @@ from parsers.timesheet_parser import TimesheetParser
 REQUIRED_FILES = ("profit", "brand", "debt", "communications", "cycle", "timesheet")
 
 
-def load_context():
-    period_folder = get_latest_period()
+def load_context(department):
+    period_folder = get_latest_period(department=department)
     files = find_files(period_folder)
     missing = [name for name in REQUIRED_FILES if name not in files]
     if missing:

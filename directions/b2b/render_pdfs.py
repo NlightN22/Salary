@@ -2,14 +2,15 @@
 
 from generators.chief_pdf_generator import generate_chief_pdf
 from generators.pdf_generator import generate_pdf
+from directions.b2b.config import DEPARTMENT_NAME
 from services.period_finder import get_latest_period
 from services.report_io import load_reports, report_stem
 
 
 def main():
-    period = get_latest_period()
+    period = get_latest_period(department=DEPARTMENT_NAME)
     year, month = int(period.parent.name), int(period.name)
-    reports = load_reports(year, month)
+    reports = load_reports(year, month, DEPARTMENT_NAME)
     if not reports:
         raise FileNotFoundError("JSON-файлы расчетов не найдены. Сначала запустите calculate_salary.py")
     for json_path, report in reports:

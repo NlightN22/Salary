@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from directions.b2b.chief_salary import calculate_chief
+from directions.b2b.config import DEPARTMENT_CODE
 from directions.b2b.manager_salary import calculate_managers
 from services.calculation_context import load_context_from_files
 from salary_web.config import REQUIRED_REPORT_TYPES, resolve_service_data_path
@@ -19,6 +20,9 @@ from salary_web.report_storage import report_completeness
 
 
 def calculate_period(db: Session, period: Period, employee_name: str | None = None) -> list[Calculation]:
+    if period.department is None or period.department.code != DEPARTMENT_CODE:
+        department = period.department.name if period.department else "неизвестное подразделение"
+        raise ValueError(f"Для подразделения «{department}» расчетный модуль не настроен")
     completeness = report_completeness(period)
     if not completeness["complete"]:
         missing = ", ".join(completeness["missing"])
