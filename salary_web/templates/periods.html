@@ -56,6 +56,9 @@
 
   <div class="card period-create-card">
     <h2>Создать период</h2>
+    {% if error == "period_exists" %}
+      <p class="error" role="alert">Такой расчетный период для выбранного отдела уже существует. Выберите другой год или месяц.</p>
+    {% endif %}
     <form method="post" action="/periods" class="period-create-form">
       <label class="period-create-field">Направление
         <select name="department_id" required>

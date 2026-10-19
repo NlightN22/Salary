@@ -203,7 +203,7 @@ def index(request: Request) -> RedirectResponse:
 
 
 @app.get("/periods", response_class=HTMLResponse)
-def periods_page(request: Request, db: Session = Depends(get_db)):
+def periods_page(request: Request, error: str | None = None, db: Session = Depends(get_db)):
     user = require_user(request, db)
     periods = periods_query_for_user(db, user).order_by(Period.year.desc(), Period.month.desc()).all()
     departments = departments_for_user(db, user)
@@ -216,6 +216,7 @@ def periods_page(request: Request, db: Session = Depends(get_db)):
             "months": MONTHS,
             "departments": departments,
             "default_department_id": default_department_id,
+            "error": error,
         }),
     )
 
@@ -242,7 +243,12 @@ def create_period_form(
     db: Session = Depends(get_db),
 ):
     user = require_user(request, db)
-    period = create_period(db, year, month, user, department_id)
+    try:
+        period = create_period(db, year, month, user, department_id)
+    except HTTPException as error:
+        if error.status_code == 409:
+            return RedirectResponse(url="/periods?error=period_exists", status_code=303)
+        raise
     return RedirectResponse(url=period_url(period), status_code=303)
 
 
@@ -1066,7 +1072,7 @@ def upload_department_report_api(
         validate_report_type(report_type)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    period = create_period(db, year, month, department_id=department.id)
+    period = get_period_by_department_date_or_404(db, department, year, month)
     return upload_report_to_period_api(db, period, report_type, file)
 
 
@@ -1225,20 +1231,30 @@ def create_period(
     if user is not None and not can_access_department(user, department.id):
         raise HTTPException(status_code=403, detail="Нет доступа к отделу")
 
+    existing_period = (
+        db.query(Period)
+        .filter(
+            Period.department_id == department.id,
+            Period.year == year,
+            Period.month == month,
+        )
+        .first()
+    )
+    if existing_period is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Период {MONTHS[month]} {year} для отдела «{department.name}» уже существует",
+        )
+
     period = Period(year=year, month=month, department_id=department.id)
     db.add(period)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        period = (
-            db.query(Period)
-            .filter(
-                Period.department_id == department.id,
-                Period.year == year,
-                Period.month == month,
-            )
-            .one()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Период {MONTHS[month]} {year} для отдела «{department.name}» уже существует",
         )
     db.refresh(period)
     return period

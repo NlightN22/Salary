@@ -136,7 +136,11 @@ def test_all_department_api_wrappers_and_error_responses(client_and_key):
     client, secret = client_and_key
     headers = {"X-API-Key": secret}
     year = 2400 + int(uuid.uuid4().hex[:2], 16)
-    assert client.post(f"/api/departments/b2b/periods/{year}/2", headers=headers).status_code == 200
+    create_period = client.post(f"/api/departments/b2b/periods/{year}/2", headers=headers)
+    assert create_period.status_code == 200
+    duplicate_period = client.post(f"/api/departments/b2b/periods/{year}/2", headers=headers)
+    assert duplicate_period.status_code == 409
+    assert "уже существует" in duplicate_period.json()["detail"]
     assert client.get(f"/api/departments/b2b/periods/{year}/2/validation", headers=headers).status_code == 200
     assert client.post(f"/api/departments/b2b/periods/{year}/2/validate", headers=headers).status_code == 200
     bad_upload = client.post(

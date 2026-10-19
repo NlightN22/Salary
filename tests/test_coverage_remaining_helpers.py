@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from starlette.requests import Request
 
 from salary_web import auth
@@ -157,6 +158,13 @@ def test_app_helper_remaining_paths(db, tmp_path, monkeypatch):
 
     with pytest.raises(HTTPException): create_period(db, 2026, 1, department_id=9999)
     with pytest.raises(HTTPException): create_period(db, 2026, 1, empty_user, d1.id)
+    def fail_period_commit():
+        raise IntegrityError("INSERT", {}, Exception("unique constraint"))
+    with monkeypatch.context() as scoped:
+        scoped.setattr(db, "commit", fail_period_commit)
+        with pytest.raises(HTTPException) as duplicate_race:
+            create_period(db, 2027, 1, department_id=d1.id)
+        assert duplicate_race.value.status_code == 409
     with pytest.raises(HTTPException): get_department_by_code_or_404(db, "missing")
     with pytest.raises(HTTPException): get_period_by_department_date_or_404(db, d1, 2026, 1)
     with pytest.raises(HTTPException): ensure_period_access(request_with_cookie(), db, SimpleNamespace(department_id=d1.id))

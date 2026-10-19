@@ -101,6 +101,26 @@ def test_latest_period_uses_department_name_as_folder(tmp_path):
     assert get_latest_period(tmp_path / "data", department="B2B-направление") == period
 
 
+def test_file_and_period_finders_ignore_temporary_files_and_report_missing_paths(tmp_path):
+    reports = tmp_path / "files"
+    reports.mkdir()
+    (reports / ".hidden.xlsx").touch()
+    (reports / "~$temporary.xlsx").touch()
+    assert find_files(reports) == {}
+
+    (tmp_path / "B2B").mkdir()
+    with pytest.raises(FileNotFoundError, match="нет папок с годами"):
+        get_latest_period(tmp_path, department="B2B")
+
+    department_dir = tmp_path / "B2B"
+    (department_dir / "2026").mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match="нет папок с месяцами"):
+        get_latest_period(tmp_path, department="B2B")
+
+    with pytest.raises(ValueError, match="Некорректное название"):
+        get_latest_period(tmp_path, department="../B2B")
+
+
 def test_report_stem_uses_full_safe_name_month_and_year():
     assert report_stem("Иванов/Иван Иванович", 2026, 10) == "Иванов_Иван_Иванович_октябрь_2026"
     assert report_stem("Иванов Петр Петрович", 2026, 10) != report_stem("Иванов Иван Иванович", 2026, 10)

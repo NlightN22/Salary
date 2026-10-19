@@ -61,6 +61,16 @@ def test_complete_web_admin_and_manual_entry_workflow():
 
         create_period = client.post("/periods", data={"year": year, "month": 1, "department_id": department_id})
         assert create_period.status_code == 303
+        duplicate_period = client.post("/periods", data={"year": year, "month": 1, "department_id": department_id})
+        assert duplicate_period.status_code == 303
+        assert duplicate_period.headers["location"] == "/periods?error=period_exists"
+        duplicate_notice = client.get(duplicate_period.headers["location"])
+        assert duplicate_notice.status_code == 200
+        assert "Такой расчетный период для выбранного отдела уже существует" in duplicate_notice.text
+        invalid_period = client.post("/periods", data={
+            "year": year, "month": 13, "department_id": department_id,
+        })
+        assert invalid_period.status_code == 400
         db = SessionLocal(); period = db.query(Period).filter_by(year=year, month=1, department_id=department_id).one(); period_id = period.id; db.close()
         web_base = create_period.headers["location"]
         assert client.get(web_base).status_code == 200
